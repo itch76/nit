@@ -892,6 +892,7 @@ redef class AForExpr
 		# anchor formal and virtual types
 		if mtype.need_anchor then mtype = v.anchor_to(mtype)
 
+		if mtype isa MNullableType then mtype = mtype.mtype
 		self.coltype = mtype.as(MClassType)
 
 		# get methods is_ok, next, item
