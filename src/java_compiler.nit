@@ -195,7 +195,7 @@ class JavaCompiler
 		v.add("import java.util.HashMap;")
 		v.add("public class RTVal \{")
 		v.add("  public RTClass rtclass;")
-		v.add("  public HashMap<String, Object> attributes = new HashMap<>();")
+		v.add("  public HashMap<String, RTVal> attrs = new HashMap<>();")
 		v.add("  public Box box;")
 		v.add("  public RTVal(RTClass rtclass) \{")
 		v.add("    this.rtclass = rtclass;")
@@ -287,7 +287,15 @@ class JavaCompiler
 		v.add("  \}")
 		v.add("  @Override")
 		v.add("  public RTVal exec(RTVal[] args) \{")
-		apropdef.compile(v)
+		if apropdef isa AAttrPropdef then
+			if mdef.mproperty.name.has_suffix("=") then
+				apropdef.compile_setter(v)
+			else
+				apropdef.compile_getter(v)
+			end
+		else
+			apropdef.compile(v)
+		end
 		v.add("  \}")
 		v.add("\}")
 	end
@@ -361,13 +369,20 @@ class JavaCompilerVisitor
 	fun is_var_decl(variable: Variable): Bool do return var2rtval.has_key(variable)
 	var var2rtval = new HashMap[Variable, RTVal]
 
-	fun compile_send(callsite: CallSite, args: Array[RTVal]) do
-		var rt_args = new Array[String]
-		for arg in args do rt_args.add(arg.rt_name)
-		var recv = args[0]
-		addn("{recv}.rtclass.vft.get(\"{callsite.mproperty.jname}\").exec(")
-		addn("new RTVal[]\{{rt_args.join(",")}\}")
-		addn(")")
+	fun compile_send(callsite: CallSite, recv: RTVal, args: Array[RTVal]): RTVal do
+		var key = callsite.mproperty.jname
+		var val = decl_rtval
+		var rtargs = [recv]
+		rtargs.add_all(args)
+		add("{val} = {recv}.rtclass.vft.get(\"{key}\").exec(new RTVal[]\{{rtargs.join(",")}\});")
+		return val
+	end
+
+	fun compile_new(mclass: MClass, callsite: CallSite, args: Array[RTVal]): RTVal do
+		var recv = decl_rtval
+		add("{recv} = new RTVal({mclass.rt_name}.get{mclass.rt_name}());")
+		compile_send(callsite, recv, args)
+		return recv
 	end
 
 	fun compile(expr: AExpr) do
@@ -495,16 +510,29 @@ redef class AAndExpr
 	end
 end
 
+redef class AAttrPropdef
+	fun compile_setter(v: VISITOR) do
+		var recv = v.decl_recv
+		var val = v.decl_rtval
+		v.add("{val} = args[1];")
+		v.add("{recv}.attrs.put(\"{mpropdef.mproperty.jname}\", {val});")
+		v.add("return null;")
+	end
+
+	fun compile_getter(v: VISITOR) do
+		var recv = v.decl_recv
+		var res = v.decl_rtval
+		v.add("{res} = {recv}.attrs.get(\"{mpropdef.mproperty.jname}\");")
+		v.add("return {res};")
+	end
+end
+
 redef class ABinopExpr
 	redef fun expr(v) do
-		var res = v.decl_rtval
+		var callsite = self.callsite.as(not null)
 		var recv = v.expr(n_expr)
-		var args = [recv]
-		args.add(v.expr(n_expr2))
-		v.addn("{res} = ")
-		v.compile_send(callsite.as(not null), args)
-		v.add(";")
-		return res
+		var args = [v.expr(n_expr2)]
+		return v.compile_send(callsite, recv, args)
 	end
 end
 
@@ -521,28 +549,22 @@ end
 
 redef class ACallExpr
 	redef fun expr(v) do
-		var res = v.decl_rtval
+		var callsite = self.callsite.as(not null)
 		var recv = v.expr(n_expr)
-		var args = [recv]
-		for raw_arg in raw_arguments do
-			var arg = v.expr(raw_arg)
-			args.add(arg)
-		end
-		v.addn("{res} = ")
-		v.compile_send(callsite.as(not null), args)
-		v.add(";")
-		return res
+		var args = new Array[RTVal]
+		for raw_arg in raw_arguments do args.add(v.expr(raw_arg))
+		return v.compile_send(callsite, recv, args)
 	end
 
+	redef fun compile(v) do expr(v)
+end
+
+redef class ACallAssignExpr
 	redef fun compile(v) do
+		var callsite = self.callsite.as(not null)
 		var recv = v.expr(n_expr)
-		var args = [recv]
-		for raw_arg in raw_arguments do
-			var arg = v.expr(raw_arg)
-			args.add(arg)
-		end
-		v.compile_send(callsite.as(not null), args)
-		v.add(";")
+		var args = [v.expr(n_value)]
+		v.compile_send(callsite, recv, args)
 	end
 end
 
@@ -560,7 +582,6 @@ redef class AConcreteMethPropdef
 	redef fun compile(v) do
 		if n_block != null then
 			var recv = v.decl_recv
-			v.add("{recv} = args[0];")
 			if n_signature != null then
 				var i = 1
 				for param in n_signature.n_params do
@@ -882,17 +903,10 @@ end
 redef class ANewExpr
 	redef fun expr(v) do
 		var mclass = n_type.mtype.as(MClassType).mclass
-		var args = new RTVal(v)
-		v.add("HashMap<String, Object> {args} = new HashMap<>();")
-		for raw_arg in n_args.n_exprs do
-			var arg = v.expr(raw_arg)
-			v.add("{args}.put(\"name\", {arg})")
-		end
-		var recv = v.decl_rtval
-		v.add("{recv} = new RTVal({mclass.rt_name}.get{mclass.rt_name}(), {args});")
-		#TODO call initializer
-		#TODO named consts?
-		return recv
+		var callsite = self.callsite.as(not null)
+		var args = new Array[RTVal]
+		for raw_arg in n_args.n_exprs do args.add(v.expr(raw_arg))
+		return v.compile_new(mclass, callsite, args)
 	end
 end
 
@@ -938,17 +952,20 @@ redef class ATrueExpr
 	end
 end
 
-redef class AUminusExpr
-	redef fun expr(v) do
-		var res = v.decl_rtval
-		var recv = v.expr(n_expr)
-		var args = [recv]
-		v.addn("{res} = ")
-		v.compile_send(callsite.as(not null), args)
-		v.add(";")
-		return res
-	end
-end
+#redef class AUminusExpr
+#	redef fun expr(v) do
+		#		var callsite = self.callsite.as(not null)
+		#		var recv = v.expr(n_expr)
+		#		var args 
+		#		var res = v.decl_rtval
+		#		var recv = v.expr(n_expr)
+		#		var args = [recv]
+		#		v.addn("{res} = ")
+		#		v.compile_send(callsite.as(not null), args)
+		#		v.add(";")
+		#		return res
+		#	end
+		#end
 
 redef class AVarExpr
 	redef fun expr(v) do
