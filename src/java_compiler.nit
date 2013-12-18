@@ -72,9 +72,9 @@ redef class ModelBuilder
 
 		var outname = self.toolcontext.opt_output.value
 		if outname == null then
-			outname = "{mainmodule.name}"
+			outname = "{mainmodule.jname}"
 		end
-		var outpath = orig_dir
+		var outpath = orig_dir.join_path(outname).simplify_path
 
 		var i = 0
 		var jfiles = new List[String]
@@ -90,7 +90,7 @@ redef class ModelBuilder
 		end
 
 		# Generate the manifest
-		var manifname = "{outname}.mf"
+		var manifname = "{mainmodule.jname}.mf"
 		var manifpath = "{compile_dir}/{manifname}"
 		var maniffile = new OFStream.open(manifpath)
 		maniffile.write("Manifest-Version: 1.0\n")
@@ -98,28 +98,30 @@ redef class ModelBuilder
 		maniffile.close
 
 		# Generate the Makefile
-		var makename = "{outname}.mk"
+		var makename = "{mainmodule.jname}.mk"
 		var makepath = "{compile_dir}/{makename}"
 		var makefile = new OFStream.open(makepath)
 
-		makefile.write("javac = javac\n\n")
-		makefile.write("jar = jar\n\n")
+		makefile.write("JC = javac\n\n")
+		makefile.write("JAR = jar\n\n")
 
 		makefile.write("all: {outpath}\n\n")
-		makefile.write("{mainmodule.jname}_Main.class: {mainmodule.jname}_Main.java\n\t$(javac) {mainmodule.jname}_Main.java\n\n")
+		makefile.write("{mainmodule.jname}_Main.class: {mainmodule.jname}_Main.java\n")
+		#makefile.write("\t$(JC) {mainmodule.jname}_Main.java\n\n")
+		makefile.write("\t$(JC) {jfiles.join(" ")}\n\n")
 
 		# Compile each generated file
 		var ofiles = new List[String]
 		for f in jfiles do
 			var o = f.strip_extension(".java") + ".class"
-			#makefile.write("{o}: {f}\n\t$(javac) {f}\n\n")
+			#makefile.write("{o}: {f}\n\t$(JC) -implicit:none {f}\n\n")
 			ofiles.add(o)
 		end
 
 		# Link edition
+		#makefile.write("{outpath}: {ofiles.join(" ")}\n")
 		makefile.write("{outpath}: {mainmodule.jname}_Main.class\n")
-		makefile.write("\t@echo \"building jar\"\n")
-		makefile.write("\t$(jar) cfm {outpath}/{outname}.jar {manifname} {ofiles.join(" ")}\n\n")
+		makefile.write("\t$(JAR) cfm {outpath}.jar {manifname} {ofiles.join(" ")}\n\n")
 
 		# Clean
 		makefile.write("clean:\n\trm {ofiles.join(" ")} 2>/dev/null\n\n")
@@ -150,7 +152,7 @@ redef class ModelBuilder
 		# bash script
 		var shfile = new OFStream.open(outname)
 		shfile.write("#!/bin/bash\n")
-		shfile.write("exec java -jar {outname}.jar \"$@\"\n")
+		shfile.write("java -jar {outname}.jar \"$@\"\n")
 		shfile.close
 		sys.system("chmod +x {outname}")
 	end
@@ -182,6 +184,7 @@ class JavaCompiler
 		v.add("public abstract class RTClass \{")
 		v.add("  public String class_name;")
 		v.add("  public HashMap<String, RTMethod> vft = new HashMap<>();")
+		v.add("  public HashMap<String, RTClass> supers = new HashMap<>();")
 		v.add("  protected RTClass() \{\}")
 		v.add("\}")
 		# runtime method
@@ -213,10 +216,11 @@ class JavaCompiler
 		v.add("    this.value = value;")
 		v.add("  \}")
         v.add("  public int int_val() \{ return (int)value; \}")
-		v.add("  public boolean bool_val() \{ return (boolean)value; \}")
+		v.add("  public boolean boolean_val() \{ return (boolean)value; \}")
 		v.add("  public char char_val() \{ return (char)value; \}")
         v.add("  public float float_val() \{ return (float)value; \}")
 		v.add("  public String string_val() \{ return (String)value; \}")
+		v.add("  public RTVal[] array_val() \{ return (RTVal[])value; \}")
 		v.add("\}")
 	end
 
@@ -235,16 +239,8 @@ class JavaCompiler
 		v.add("  protected static RTClass instance;")
 	    v.add("  private {mclass.rt_name}() \{")
 		v.add("    this.class_name = \"{mclass.name}\";")
-		# fill vft
-		for pclass in mclass.in_hierarchy(mainmodule).greaters do
-			for mclassdef in pclass.mclassdefs do
-				for mprop in mclassdef.intro_mproperties do
-					if not mprop isa MMethod then continue
-					var mpropdef = mprop.lookup_first_definition(mainmodule, pclass.mclass_type)
-					v.add("    this.vft.put(\"{mprop.jname}\", {mpropdef.rt_name}.get{mpropdef.rt_name}());")
-				end
-			end
-		end
+		compile_vft(v, mclass)
+		compile_type_table(v, mclass)
 		v.add("  \}")
 		v.add("  public static RTClass get{mclass.rt_name}() \{")
 		v.add("    if(instance == null) \{")
@@ -253,6 +249,45 @@ class JavaCompiler
 		v.add("    return instance;")
 		v.add("  \}")
 		v.add("\}")
+	end
+
+	# compile vft for a mclass
+	fun compile_vft(v: VISITOR, mclass: MClass) do
+		# first, collect mproperties
+		var mprops = new HashMap[String, MProperty]
+		for pclass in mclass.in_hierarchy(mainmodule).greaters do
+			for mclassdef in pclass.mclassdefs do
+				for mprop in mclassdef.intro_mproperties do
+					if not mprop isa MMethod then continue
+					if mprops.has_key(mprop.name) then continue
+					mprops[mprop.jname] = mprop
+				end
+			end
+		end
+		# fill vft with first definitions
+		for jname, mprop in mprops do
+			var mpropdef = mprop.lookup_first_definition(mainmodule, mclass.intro.bound_mtype)
+			var rt_name = mpropdef.rt_name
+			v.add("    this.vft.put(\"{jname}\", {rt_name}.get{rt_name}());")
+			# fill super next definitions
+			var previous = jname
+			while mpropdef.has_supercall do
+				mpropdef = mpropdef.lookup_next_definition(mainmodule, mclass.intro.bound_mtype)
+				rt_name = mpropdef.rt_name
+				v.add("    this.vft.put(\"{previous}\", {rt_name}.get{rt_name}()));")
+				previous = mpropdef.rt_name
+			end
+		end
+	end
+
+	fun compile_type_table(v: VISITOR, mclass: MClass) do
+		for pclass in mclass.in_hierarchy(mainmodule).greaters do
+			if pclass == mclass then
+				v.add("    supers.put(\"{pclass.jname}\", this);")
+			else
+				v.add("    supers.put(\"{pclass.jname}\", {pclass.rt_name}.get{pclass.rt_name}());")
+			end
+		end
 	end
 
 	# generate code for all MMethodDef
@@ -270,11 +305,6 @@ class JavaCompiler
 
 	# generate code for a method definition
 	fun compile_mmethod(mdef: MMethodDef) do
-		if not modelbuilder.mpropdef2npropdef.has_key(mdef) then
-			print "NOT YET IMPLEMENTED compile_method for {mdef}({mdef.class_name})"
-			return
-		end
-		var apropdef = modelbuilder.mpropdef2npropdef[mdef]
 		var v = new_visitor("{mdef.rt_name}.java")
 		v.add("import java.util.HashMap;")
 		v.add("public class {mdef.rt_name} extends RTMethod \{")
@@ -287,14 +317,41 @@ class JavaCompiler
 		v.add("  \}")
 		v.add("  @Override")
 		v.add("  public RTVal exec(RTVal[] args) \{")
-		if apropdef isa AAttrPropdef then
-			if mdef.mproperty.name.has_suffix("=") then
-				apropdef.compile_setter(v)
+		if not modelbuilder.mpropdef2npropdef.has_key(mdef) then
+			# compile implicit init and auto initialize attributes
+			if mdef.mproperty.is_init then
+				var i = 1
+				v.decl_recv
+				for mclassdef in mdef.mclassdef.in_hierarchy.greaters.to_a.reversed do
+					for mpropdef in mclassdef.mpropdefs do
+						if mpropdef isa MAttributeDef then
+							var apropdef = modelbuilder.mpropdef2npropdef[mpropdef]
+							if apropdef isa AAttrPropdef then
+								if apropdef.is_initialized then
+									apropdef.compile_initialized(v)
+								else
+									apropdef.compile_fromargs(v, i)
+									i += 1
+								end
+							end
+						end
+					end
+				end
 			else
-				apropdef.compile_getter(v)
+				print "NOT YET IMPLEMENTED compile_method for {mdef}({mdef.class_name})"
 			end
+			v.add("return null;")
 		else
-			apropdef.compile(v)
+			var apropdef = modelbuilder.mpropdef2npropdef[mdef]
+			if apropdef isa AAttrPropdef then
+				if mdef.mproperty.name.has_suffix("=") then
+					apropdef.compile_setter(v)
+				else
+					apropdef.compile_getter(v)
+				end
+			else
+				apropdef.compile(v)
+			end
 		end
 		v.add("  \}")
 		v.add("\}")
@@ -303,9 +360,10 @@ class JavaCompiler
 	# generate Java main
 	fun compile_main_function do
 		var v = new_visitor("{mainmodule.jname}_Main.java")
+		var sys = v.get_primitive_mclass("Sys")
 		v.add("public class {mainmodule.jname}_Main \{")
 		v.add("  public static void main(String[] args) \{")
-		v.add("    RTVal sys = new RTVal(RTClass_{mainmodule.jname}_Sys.getRTClass_{mainmodule.jname}_Sys());")
+		v.add("    RTVal sys = new RTVal({sys.rt_name}.get{sys.rt_name}());")
 		v.add("    sys.rtclass.vft.get(\"main\").exec(new RTVal[]\{sys\});")
 		v.add("  \}")
 		v.add("\}")
@@ -369,19 +427,23 @@ class JavaCompilerVisitor
 	fun is_var_decl(variable: Variable): Bool do return var2rtval.has_key(variable)
 	var var2rtval = new HashMap[Variable, RTVal]
 
-	fun compile_send(callsite: CallSite, recv: RTVal, args: Array[RTVal]): RTVal do
-		var key = callsite.mproperty.jname
+	fun compile_send(mproperty: MProperty, recv: RTVal, args: Array[RTVal]): RTVal do
+		var jname = mproperty.jname
 		var val = decl_rtval
 		var rtargs = [recv]
 		rtargs.add_all(args)
-		add("{val} = {recv}.rtclass.vft.get(\"{key}\").exec(new RTVal[]\{{rtargs.join(",")}\});")
+		add("{val} = {recv}.rtclass.vft.get(\"{jname}\").exec(new RTVal[]\{{rtargs.join(",")}\});")
 		return val
+	end
+
+	fun compile_callsite(callsite: CallSite, recv: RTVal, args: Array[RTVal]): RTVal do
+		return compile_send(callsite.mproperty, recv, args)
 	end
 
 	fun compile_new(mclass: MClass, callsite: CallSite, args: Array[RTVal]): RTVal do
 		var recv = decl_rtval
 		add("{recv} = new RTVal({mclass.rt_name}.get{mclass.rt_name}());")
-		compile_send(callsite, recv, args)
+		compile_callsite(callsite, recv, args)
 		return recv
 	end
 
@@ -411,12 +473,63 @@ class JavaCompilerVisitor
 		return mclass.first
 	end
 
-	fun box_rtval(rtval: RTVal, box_mclass: MClass): RTVal do
-		var box = new RTVal(self)
-		add("Box {box} = new Box({rtval});")
-		var res = decl_rtval
-		add("{res} = new RTVal({box_mclass.rt_name}.get{box_mclass.rt_name}(), {box});")
-		return res
+	fun get_primitive_mproperty(mtype: MClassType, name: String): MProperty do
+		var mprops = compiler.mainmodule.model.get_mproperties_by_name(name)
+		for mprop in mprops do
+			if mtype.has_mproperty(compiler.mainmodule, mprop) then return mprop
+		end
+		print "Fatal Error: no primitive method {name} in {mtype}"
+		abort
+	end
+
+	fun box_rtval(rtval: RTVal, mclass_box: MClass): RTVal do
+		var nbox = new RTVal(self)
+		add("Box {nbox} = new Box({rtval});")
+		var recv = decl_rtval
+		add("{recv} = new RTVal({mclass_box.rt_name}.get{mclass_box.rt_name}(), {nbox});")
+		return recv
+	end
+
+	# box concrete primitive values (Int, Float, Bool, Char) to RTVal
+	fun box_value(value: nullable Object): RTVal do
+		if value == null then
+			var nbox = new RTVal(self)
+			add("Box {nbox} = new Box(null);")
+			var recv = decl_rtval
+			add("{recv} = new RTVal(null, {nbox});")
+			return recv
+		else if value isa Int then
+			var mbox = get_primitive_mclass("Int")
+			var nbox = new RTVal(self)
+			add("Box {nbox} = new Box({value});")
+			var recv = decl_rtval
+			add("{recv} = new RTVal({mbox.rt_name}.get{mbox.rt_name}(), {nbox});")
+			return recv
+		else if value isa Bool then
+			var mbox = get_primitive_mclass("Bool")
+			var nbox = new RTVal(self)
+			add("Box {nbox} = new Box({value});")
+			var recv = decl_rtval
+			add("{recv} = new RTVal({mbox.rt_name}.get{mbox.rt_name}(), {nbox});")
+			return recv
+		else if value isa Float then
+			var mbox = get_primitive_mclass("Float")
+			var nbox = new RTVal(self)
+			add("Box {nbox} = new Box({value});")
+			var recv = decl_rtval
+			add("{recv} = new RTVal({mbox.rt_name}.get{mbox.rt_name}(), {nbox});")
+			return recv
+		else if value isa Char then
+			var mbox = get_primitive_mclass("Char")
+			var nbox = new RTVal(self)
+			add("Box {nbox} = new Box('{value.to_s.escape_to_c}');")
+			var recv = decl_rtval
+			add("{recv} = new RTVal({mbox.rt_name}.get{mbox.rt_name}(), {nbox});")
+			return recv
+		else
+			print "NOT YET IMPL. box_value for {value} ({value.class_name})"
+			abort
+		end
 	end
 end
 
@@ -461,6 +574,10 @@ redef class MPropDef
 	end
 end
 
+redef class Location
+	fun short_location: String do return "{file.filename.escape_to_c}:{line_start}"
+end
+
 # nodes compilation
 
 redef class ANode
@@ -482,9 +599,9 @@ end
 redef class AAssertExpr
 	redef fun compile(v) do
 		var exp = v.expr(n_expr)
-		v.add("if(!{exp}.box.bool_val()) \{")
+		v.add("if(!{exp}.box.boolean_val()) \{")
 		if n_else != null then v.compile(n_else.as(not null))
-		v.add("  System.out.println(\"Runtime error: Assert failed ({location})\");")
+		v.add("  System.out.println(\"Runtime error: Assert failed ({location.short_location})\");")
 		v.add("  System.exit(1);")
 		v.add("  return null;")
 		v.add("\}")
@@ -493,7 +610,7 @@ end
 
 redef class AAbortExpr
 	redef fun compile(v) do
-		v.add("System.out.println(\"Runtime error: Aborted ({location})\");")
+		v.add("System.out.println(\"Runtime error: Aborted ({location.short_location})\");")
 		v.add("System.exit(1);")
 		v.add("return null;")
 	end
@@ -504,13 +621,81 @@ redef class AAndExpr
 		var val = new RTVal(v)
 		var exp1 = v.expr(n_expr)
 		var exp2 = v.expr(n_expr2)
-		v.add("boolean {val} = ({exp1}.box.bool_val() && {exp2}.box.bool_val());")
+		v.add("boolean {val} = ({exp1}.box.boolean_val() && {exp2}.box.boolean_val());")
 		var mclass = v.get_primitive_mclass("Bool")
 		return v.box_rtval(val, mclass)
 	end
 end
 
+redef class AArrayExpr
+	redef fun expr(v) do
+		var size = n_exprs.n_exprs.length
+		# init NativeArray
+		var native = new RTVal(v)
+		v.add("RTVal[] {native} = new RTVal[{size}];")
+		var i = 0
+		for n_expr in n_exprs.n_exprs do
+			var exp = v.expr(n_expr)
+			v.add("{native}[{i}] = {exp};")
+			i += 1
+		end
+		var mnative = v.get_primitive_mclass("NativeArray")
+		var nbox = v.box_rtval(native, mnative)
+		# init Array
+		var marray = v.get_primitive_mclass("Array")
+		var recv = v.decl_rtval
+		v.add("{recv} = new RTVal({marray.rt_name}.get{marray.rt_name}());")
+		# call init.with_native
+		var rtsize = v.box_value(size)
+		var args = [recv, nbox, rtsize]
+		v.add("{recv}.rtclass.vft.get(\"with_native\").exec(new RTVal[]\{{args.join(",")}\});")
+		return recv
+	end
+end
+
+redef class AAsNotnullExpr
+	redef fun expr(v) do
+		var exp = v.expr(n_expr)
+		v.add("if ({exp}.rtclass == null) \{")
+		v.add("  System.out.println(\"Runtime error: Cast failed ({location.short_location})\");")
+		v.add("  System.exit(1);")
+		v.add("  return null;")
+		v.add("\}")
+		return exp
+	end
+end
+
+redef class AAttrExpr
+	redef fun expr(v) do
+		var recv = v.get_recv
+		var val = v.decl_rtval
+		v.add("{val} = {recv}.attrs.get(\"{mproperty.jname}\");")
+		return val
+	end
+end
+
+redef class AAttrAssignExpr
+	redef fun compile(v) do
+		var recv = v.expr(n_expr)
+		var val = v.expr(n_value)
+		v.add("{recv}.attrs.put(\"{mproperty.jname}\", {val});")
+	end
+end
+
 redef class AAttrPropdef
+	fun is_initialized: Bool do return n_expr != null
+
+	fun compile_initialized(v: VISITOR) do
+		var recv = v.get_recv
+		var val = v.expr(n_expr.as(not null))
+		v.add("{recv}.attrs.put(\"{mpropdef.mproperty.jname}\", {val});")
+	end
+
+	fun compile_fromargs(v: VISITOR, index: Int) do
+		var recv = v.get_recv
+		v.add("{recv}.attrs.put(\"{mpropdef.mproperty.jname}\", args[{index}]);")
+	end
+
 	fun compile_setter(v: VISITOR) do
 		var recv = v.decl_recv
 		var val = v.decl_rtval
@@ -527,12 +712,27 @@ redef class AAttrPropdef
 	end
 end
 
+redef class AAttrReassignExpr
+	redef fun compile(v) do
+		v.add("//LAAAAAA")
+		var callsite = reassign_callsite.as(not null)
+		var recv = v.get_recv
+		var val = v.expr(n_value)
+		var old = v.decl_rtval
+		v.add("{old} = {recv}.attrs.get(\"{mproperty.jname}\");")
+		var rtnew = v.compile_callsite(callsite, old, [val])
+		v.add("{recv}.attrs.put(\"{mproperty.jname}\", {rtnew});")
+		v.add("// HEEEEEERE")
+	end
+end
+
+
 redef class ABinopExpr
 	redef fun expr(v) do
 		var callsite = self.callsite.as(not null)
 		var recv = v.expr(n_expr)
 		var args = [v.expr(n_expr2)]
-		return v.compile_send(callsite, recv, args)
+		return v.compile_callsite(callsite, recv, args)
 	end
 end
 
@@ -540,9 +740,30 @@ redef class ABlockExpr
 	redef fun compile(v) do for exp in n_expr do v.compile(exp)
 end
 
+redef class ABraExpr
+	redef fun expr(v) do
+		var callsite = self.callsite.as(not null)
+		var recv = v.expr(n_expr)
+		var args = new Array[RTVal]
+		for raw_arg in raw_arguments do args.add(v.expr(raw_arg))
+		return v.compile_callsite(callsite, recv, args)
+	end
+end
+
+redef class ABraAssignExpr
+	redef fun compile(v) do
+		var callsite = self.callsite.as(not null)
+		var recv = v.expr(n_expr)
+		var args = new Array[RTVal]
+		for raw_arg in raw_arguments do args.add(v.expr(raw_arg))
+		args.add(v.expr(n_value))
+		v.compile_callsite(callsite, recv, args)
+	end
+end
+
 redef class ADeferredMethPropdef
 	redef fun compile(v) do
-		v.add("System.out.println(\"Runtime error: Abstract method `{mpropdef.mproperty.name}` called on `{mpropdef.mclassdef.mclass.name}` ({location.to_s})\");")
+		v.add("System.out.println(\"Runtime error: Abstract method `{mpropdef.mproperty.name}` called on `{mpropdef.mclassdef.mclass.name}` ({location.short_location})\");")
 		v.add("return null;")
 	end
 end
@@ -553,7 +774,7 @@ redef class ACallExpr
 		var recv = v.expr(n_expr)
 		var args = new Array[RTVal]
 		for raw_arg in raw_arguments do args.add(v.expr(raw_arg))
-		return v.compile_send(callsite, recv, args)
+		return v.compile_callsite(callsite, recv, args)
 	end
 
 	redef fun compile(v) do expr(v)
@@ -564,18 +785,12 @@ redef class ACallAssignExpr
 		var callsite = self.callsite.as(not null)
 		var recv = v.expr(n_expr)
 		var args = [v.expr(n_value)]
-		v.compile_send(callsite, recv, args)
+		v.compile_callsite(callsite, recv, args)
 	end
 end
 
 redef class ACharExpr
-	redef fun expr(v) do
-		var mclass = v.get_primitive_mclass("Char")
-		var car = value.as(not null)
-		var val = new RTVal(v)
-		v.add("char {val} = '{car}';")
-		return v.box_rtval(val, mclass)
-	end
+	redef fun expr(v) do return v.box_value(value.as(not null))
 end
 
 redef class AConcreteMethPropdef
@@ -598,6 +813,13 @@ redef class AConcreteMethPropdef
 	end
 end
 
+redef class AEqExpr
+	redef fun expr(v) do
+			#print 
+		return super
+	end
+end
+
 redef class AExternMethPropdef
 	redef fun compile(v) do
 		print "NOT YET IMPL. AExternMethPropdef::compile"
@@ -606,18 +828,81 @@ redef class AExternMethPropdef
 end
 
 redef class AFalseExpr
-	redef fun expr(v) do
-		var mclass = v.get_primitive_mclass("Bool")
-		var val = new RTVal(v)
-		v.add("boolean {val} = false;")
-		return v.box_rtval(val, mclass)
+	redef fun expr(v) do return v.box_value(false)
+end
+
+redef class AForExpr
+	redef fun compile(v) do
+		var mtype = n_expr.mtype
+		if not mtype isa MClassType then
+			print "Fatal error: expr does not return a mclass_type ({location})"
+			abort
+		end
+		var recv = v.expr(n_expr)
+
+		if variables.length == 1 then
+			var get_it = v.get_primitive_mproperty(mtype.mclass.intro.bound_mtype, "iterator")
+			var mit = v.get_primitive_mclass("Iterator")
+			var mit_isok = v.get_primitive_mproperty(mit.intro.bound_mtype, "is_ok")
+			var mit_item = v.get_primitive_mproperty(mit.intro.bound_mtype, "item")
+			var mit_next = v.get_primitive_mproperty(mit.intro.bound_mtype, "next")
+			# var it = recv.iterator()
+			var it = v.compile_send(get_it, recv, new Array[RTVal])
+			# var is_ok = it.is_ok
+			var it_isok = v.compile_send(mit_isok, it, new Array[RTVal])
+			# while(is_ok) do
+			v.add("while({it_isok}.box.boolean_val()) \{")
+			#   var i = it.item
+			var i = v.decl_var(variables.first)
+			var item = v.compile_send(mit_item, it, new Array[RTVal])
+			v.add("{i} = {item};")
+			#   ...
+			if n_block != null then v.compile(n_block.as(not null))
+			#   it.next
+			v.compile_send(mit_next, it, new Array[RTVal])
+			#   is_ok = it.is_ok
+			var next_ok = v.compile_send(mit_isok, it, new Array[RTVal])
+			v.add("{it_isok} = {next_ok};")
+			# end
+			v.add("\}")
+		else
+			var get_it = v.get_primitive_mproperty(mtype.mclass.intro.bound_mtype, "iterator")
+			var mit = v.get_primitive_mclass("MapIterator")
+			var mit_isok = v.get_primitive_mproperty(mit.intro.bound_mtype, "is_ok")
+			var mit_key = v.get_primitive_mproperty(mit.intro.bound_mtype, "key")
+			var mit_item = v.get_primitive_mproperty(mit.intro.bound_mtype, "item")
+			var mit_next = v.get_primitive_mproperty(mit.intro.bound_mtype, "next")
+			# var it = recv.iterator()
+			var it = v.compile_send(get_it, recv, new Array[RTVal])
+			# var is_ok = it.is_ok
+			var it_isok = v.compile_send(mit_isok, it, new Array[RTVal])
+			# while(is_ok) do
+			v.add("while({it_isok}.box.boolean_val()) \{")
+			#   var i = it.item
+			var i = v.decl_var(variables.first)
+			var item = v.compile_send(mit_item, it, new Array[RTVal])
+			v.add("{i} = {item};")
+			#   var j = it.key
+			var j = v.decl_var(variables[1])
+			var key = v.compile_send(mit_key, it, new Array[RTVal])
+			v.add("{j} = {key};")
+			#   ...
+			if n_block != null then v.compile(n_block.as(not null))
+			#   it.next
+			v.compile_send(mit_next, it, new Array[RTVal])
+			#   is_ok = it.is_ok
+			var next_ok = v.compile_send(mit_isok, it, new Array[RTVal])
+			v.add("{it_isok} = {next_ok};")
+			# end
+			v.add("\}")
+		end
 	end
 end
 
 redef class AIfExpr
 	redef fun compile(v) do
 		var val = v.expr(n_expr)
-		v.add("if ({val}.box.bool_val()) \{")
+		v.add("if ({val}.box.boolean_val()) \{")
 		if n_then != null then
 			v.compile(n_then.as(not null))
 		end
@@ -634,13 +919,7 @@ redef class AImplicitSelfExpr
 end
 
 redef class AIntExpr
-	redef fun expr(v) do
-		var mclass = v.get_primitive_mclass("Char")
-		var int = value.as(not null)
-		var val = new RTVal(v)
-		v.add("int {val} = {int};")
-		return v.box_rtval(val, mclass)
-	end
+	redef fun expr(v) do return v.box_value(value.as(not null))
 end
 
 redef class AInternMethPropdef
@@ -671,17 +950,17 @@ redef class AInternMethPropdef
 			end
 		else if mclass.name == "Bool" then # Bool primitive
 			if mprop.name == "==" then
-				compile_bool_op(v, recv, "bool", "==")
+				compile_bool_op(v, recv, "boolean", "==")
 			else if mprop.name == "!=" then
-				compile_bool_op(v, recv, "bool", "!=")
+				compile_bool_op(v, recv, "boolean", "!=")
 			else if mprop.name == "object_id" then
 				var box_int = v.get_primitive_mclass("Int")
 				var id = new RTVal(v)
-				v.add("int {id} = {recv}.box.bool_val() ? 1 : 0;")
+				v.add("int {id} = {recv}.box.boolean_val() ? 1 : 0;")
 				var box = v.box_rtval(id, box_int)
 				v.add("return {box};")
 			else if mprop.name == "output" then
-				v.add("System.out.println({recv}.box.bool_val());")
+				v.add("System.out.println({recv}.box.boolean_val());")
 				v.add("return null;")
 			end
 			return
@@ -831,10 +1110,35 @@ redef class AInternMethPropdef
 				var box = v.box_rtval(id, box_int)
 				v.add("return {box};")
 			else if mprop.name == "output" then
-				v.add("System.out.println({recv}.box.char_val());")
+				v.add("System.out.print({recv}.box.char_val());")
 				v.add("return null;")
 			end
 			return
+		else if mclass.name == "NativeArray" then
+			if mprop.name == "[]" then
+				v.add("return {recv}.box.array_val()[args[1].box.int_val()];")
+			else if mprop.name == "[]=" then
+				v.add("{recv}.box.array_val()[args[1].box.int_val()] = args[2];")
+				v.add("return null;")
+			else if mprop.name == "copy_to" then
+				var i = new RTVal(v)
+				var dest = v.decl_rtval
+				v.add("{dest} = args[1];")
+				v.add("for(int {i} = 0; {i} < {recv}.box.array_val().length; {i}++) \{")
+				v.add("  {dest}.box.array_val()[{i}] = {recv}.box.array_val()[{i}];")
+				v.add("\}")
+				v.add("return null;")
+			end
+			return
+		else if mclass.name == "ArrayCapable" then
+			if mprop.name == "calloc_array" then
+				var box_arr = v.get_primitive_mclass("NativeArray")
+				var arr = new RTVal(v)
+				v.add("RTVal[] {arr} = new RTVal[args[1].box.int_val()];")
+				var box = v.box_rtval(arr, box_arr)
+				v.add("return {box};")
+				return
+			end
 		end
 		print "AInternMethPropdef::compile for {mpropdef}"
 		#TODO missing primitives
@@ -846,7 +1150,12 @@ redef class AInternMethPropdef
 		var exp = v.decl_rtval
 		v.add("{exp} = args[1];")
 		var res = new RTVal(v)
-		v.add("boolean {res} = ({recv}.box.{jtype}_val() {op} {exp}.box.{jtype}_val());")
+		if op == "==" or op == "!=" then
+			v.add("boolean {res} = {recv}.box.value {op} {exp}.box.value;")
+		else
+			v.addn("boolean {res} = ({recv}.box.value != null && {exp}.box.value != null)")
+			v.add(" && ({recv}.box.{jtype}_val() {op} {exp}.box.{jtype}_val());")
+		end
 		var box = v.box_rtval(res, box_bool)
 		v.add("return {box};")
 	end
@@ -882,6 +1191,17 @@ redef class AInternMethPropdef
 	end
 end
 
+redef class AIsaExpr
+	redef fun expr(v) do
+		var bool_box = v.get_primitive_mclass("Bool")
+		var recv = v.expr(n_expr)
+		var mclass = n_type.mtype.as(MClassType).mclass
+		var res = new RTVal(v)
+		v.add("boolean {res} = {recv}.rtclass.supers.get(\"{mclass.jname}\") == {mclass.rt_name}.get{mclass.rt_name}();")
+		return v.box_rtval(res, bool_box)
+	end
+end
+
 redef class ALoopExpr
 	redef fun compile(v) do
 		v.add("while(true) \{")
@@ -894,9 +1214,33 @@ redef class ANotExpr
 	redef fun expr(v) do
 		var exp = v.expr(n_expr)
 		var val = new RTVal(v)
-		v.add("boolean {val} = !{exp}.box.bool_val();")
+		v.add("boolean {val} = !{exp}.box.boolean_val();")
 		var mclass = v.get_primitive_mclass("Bool")
 		return v.box_rtval(val, mclass)
+	end
+end
+
+redef class ANeExpr
+	redef fun expr(v) do
+		var mclass = v.get_primitive_mclass("Bool")
+		var exp1 = v.expr(n_expr)
+		var exp2 = v.expr(n_expr2)
+		if n_expr2.mtype isa MNullType then
+			var res = new RTVal(v)
+			v.add("boolean {res} = {exp1}.rtclass != null;")
+			return v.box_rtval(res, mclass)
+		else if n_expr.mtype isa MNullableType then
+			var res = v.decl_rtval
+			v.add("if({exp1}.rtclass == null && {exp2}.rtclass != null) \{")
+			var box = v.box_value(true)
+			v.add("  {res} = {box};")
+			v.add("\} else \{")
+			var superres = super
+			v.add("  {res} = {superres};")
+			v.add("\}")
+			return res
+		end
+		return super
 	end
 end
 
@@ -910,12 +1254,16 @@ redef class ANewExpr
 	end
 end
 
+redef class ANullExpr
+	redef fun expr(v) do return v.box_value(null)
+end
+
 redef class AOrExpr
 	redef fun expr(v) do
 		var val = new RTVal(v)
 		var exp1 = v.expr(n_expr)
 		var exp2 = v.expr(n_expr2)
-		v.add("boolean {val} = ({exp1}.box.bool_val() || {exp2}.box.bool_val());")
+		v.add("boolean {val} = ({exp1}.box.boolean_val() || {exp2}.box.boolean_val());")
 		var mclass = v.get_primitive_mclass("Bool")
 		return v.box_rtval(val, mclass)
 	end
@@ -943,29 +1291,39 @@ redef class ASelfExpr
 	redef fun expr(v) do return v.get_recv
 end
 
-redef class ATrueExpr
+redef class AStringExpr
 	redef fun expr(v) do
-		var mclass = v.get_primitive_mclass("Bool")
-		var val = new RTVal(v)
-		v.add("boolean {val} = true;")
-		return v.box_rtval(val, mclass)
+		# init NativeString
+		var string = new RTVal(v)
+		v.add("String {string} = \"{value.to_s}\";")
+		var mnative = v.get_primitive_mclass("NativeArray")
+		var nbox = v.box_rtval(string, mnative)
+		# init String
+		var mstring = v.get_primitive_mclass("String")
+		var recv = v.decl_rtval
+		v.add("{recv} = new RTVal({mstring.rt_name}.get{mstring.rt_name}());")
+		# call init.with_infos
+		var rtlen = v.box_value(value.length)
+		var rtfrom = v.box_value(0)
+		var rtto = v.box_value(value.length - 1)
+		var args = [recv, nbox, rtlen, rtfrom, rtto]
+		v.add("{recv}.rtclass.vft.get(\"with_infos\").exec(new RTVal[]\{{args.join(",")}\});")
+		return recv
 	end
 end
 
-#redef class AUminusExpr
-#	redef fun expr(v) do
-		#		var callsite = self.callsite.as(not null)
-		#		var recv = v.expr(n_expr)
-		#		var args 
-		#		var res = v.decl_rtval
-		#		var recv = v.expr(n_expr)
-		#		var args = [recv]
-		#		v.addn("{res} = ")
-		#		v.compile_send(callsite.as(not null), args)
-		#		v.add(";")
-		#		return res
-		#	end
-		#end
+redef class ATrueExpr
+	redef fun expr(v) do return v.box_value(true)
+end
+
+redef class AUminusExpr
+	redef fun expr(v) do
+		var callsite = self.callsite.as(not null)
+		var recv = v.expr(n_expr)
+		var args = new Array[RTVal]
+		return v.compile_callsite(callsite, recv, args)
+	end
+end
 
 redef class AVarExpr
 	redef fun expr(v) do
@@ -994,10 +1352,19 @@ redef class AVarAssignExpr
 	end
 end
 
+redef class AVarReassignExpr
+	redef fun compile(v) do
+		var callsite = self.reassign_callsite.as(not null)
+		var recv = v.get_var(variable.as(not null))
+		var args = [v.expr(n_value)]
+		v.compile_callsite(callsite, recv, args)
+	end
+end
+
 redef class AWhileExpr
 	redef fun compile(v) do
 		var exp = v.expr(n_expr)
-		v.add("while({exp}.box.bool_val()) \{")
+		v.add("while({exp}.box.boolean_val()) \{")
 		if n_block != null then v.compile(n_block.as(not null))
 		v.add("\}")
 	end
