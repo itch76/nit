@@ -299,6 +299,10 @@ case $engine in
 		enginebinname=nit
 		savdirs="sav/$engine/fixme/ sav/$engine/ sav/fixme/ sav/"
 		;;
+	nitj)
+		enginebinname=nitj;
+		savdirs="sav/$engine/fixme/ sav/$engine/ sav/fixme/ sav/"
+		;;
 	nitc)
 		echo "disabled engine $engine"
 		exit 0

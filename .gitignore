@@ -5,6 +5,7 @@
 EIFGENs
 
 .nit_compile*
+.nit_jcompile*
 .nitunit
 *.orig
 bin/nit*
