@@ -1501,6 +1501,7 @@ redef class ASuperExpr
 		end
 
 		self.is_typed = true
+		v.mpropdef.has_supercall = true
 	end
 end
 
