@@ -132,11 +132,9 @@ class ModelBuilder
 		var time0 = get_time
 		# Parse and recursively load
 		self.toolcontext.info("*** PARSE ***", 1)
-		var mmodules = new Array[MModule]
 		for a in modules do
 			var nmodule = self.load_module(null, a)
 			if nmodule == null then continue # Skip error
-			mmodules.add(nmodule.mmodule.as(not null))
 		end
 		var time1 = get_time
 		self.toolcontext.info("*** END PARSE: {time1-time0} ***", 2)
@@ -146,6 +144,11 @@ class ModelBuilder
 		if toolcontext.opt_only_parse.value then
 			self.toolcontext.info("*** ONLY PARSE...", 1)
 			exit(0)
+		end
+
+		var mmodules = new Array[MModule]
+		for nmodule in loaded_nmodules.values do
+			mmodules.add(nmodule.mmodule.as(not null))
 		end
 
 		return mmodules
@@ -405,7 +408,11 @@ class ModelBuilder
 		var tree = parser.parse
 		file.close
 		var mod_name = filename.basename(".nit")
-		return load_module_commons(owner, tree, mod_name)
+
+		var nmodule = load_module_commons(owner, tree, mod_name)
+		if nmodule != null then loaded_nmodules[module_path] = nmodule
+
+		return nmodule
 	end
 
 	fun load_rt_module(owner: MModule, nmodule: AModule, mod_name: String): nullable AModule
