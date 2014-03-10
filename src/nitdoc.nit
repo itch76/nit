@@ -353,6 +353,10 @@ class NitdocOverview
 	super NitdocPage
 	private var mbuilder: ModelBuilder
 	private var mmodules = new Array[MModule]
+	var sidebar = new DocSidebar
+	var sidebox = new DocSidebox("Modules")
+	var sideboxgroup = new DocSideboxGroup(null)
+
 
 	init(ctx: NitdocContext) do
 		super(ctx)
@@ -380,26 +384,23 @@ class NitdocOverview
 	redef fun title do return "Overview"
 
 	redef fun content do
-		append("<div class='sidebar'>")
 		modules_column
-		append("</div>")
 		append("<div class='content'>")
 		modules_doc
 		append("</div>")
 	end
 
 	private fun modules_column do
-		append("<nav class='properties filterable'>")
-		append("<h3>Modules</h3>")
-		append("<ul>")
+		sidebar.boxes.add(sidebox)
+		sidebox.groups.add(sideboxgroup)
 		for sidemmodule in mmodules do
 			if mbuilder.mmodule2nmodule.has_key(sidemmodule) then
-				var onemodule = mbuilder.mmodule2nmodule[sidemmodule]
-				append ("<li><a title='{onemodule.short_comment}' href='\#{sidemmodule.anchor}'>{sidemmodule.full_name}</a></li>")
+				var element = new DocListElement("<a title='{mbuilder.mmodule2nmodule[sidemmodule].short_comment}' href='\#{sidemmodule.anchor}'>{sidemmodule.full_name}</a>")
+				element.css_classes.add(sidemmodule.full_name)
+				sideboxgroup.elements.add(element)
 			end
 		end
-		append("</ul>")
-		append("</nav>")
+		append(sidebar.html)
 	end
 
 	private fun modules_doc do
@@ -589,14 +590,26 @@ class NitdocModule
 		sorted.add_all(intro_mclasses)
 		sorted.add_all(redef_mclasses)
 		sorter.sort(sorted)
+		# Work in Progress
+		#var sidebar = new DocSidebar
+		#var sidebox = new DocSidebox("Classes")
+		#var sideboxgroup = new DocSideboxGroup("Classes")
+		#sidebar.boxes.add(sidebox)
+		#sidebox.groups.add(sideboxgroup)
 		if not sorted.is_empty then
 			append("<nav class='properties filterable'>")
 			append("<h3>Classes</h3>")
 			append("<h4>Classes</h4>")
 			append("<ul>")
-			for mclass in sorted do mclass.html_sidebar_item(self)
+			for mclass in sorted do
+					#var element = new DocListElement(mclass.html_sidebar_item(self))
+					#element.css_classes.add(mclass.html_full_desc)
+					#sideboxgroup.elements.add(element)
+					mclass.html_sidebar_item(self)
+			end
 			append("</ul>")
 			append("</nav>")
+			#append(sidebar.html)
 		end
 	end
 
