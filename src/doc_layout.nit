@@ -49,7 +49,13 @@ end
 
 # footer of the html page
 class DocFooter
-	var text writable = new String
+	var text: String writable
+
+	init do end
+
+	init with_text(text: String) do
+		self.text = text
+	end
 
 	# return html footer
 	fun html: String do
@@ -60,4 +66,61 @@ class DocFooter
 		return buffer.to_s
 	end
 end
+###################################################
 
+# sidebar of the html page (<div class='sidebar')>)
+class DocSidebar
+	var boxes = new Array[DocSidebox]
+
+	# return html sidebar
+	fun html: String do
+		var buffer = new Buffer
+		buffer.append("<div class='sidebar'>")
+		for box in boxes do buffer.append(box.html)
+		buffer.append("</div>")
+		return buffer.to_s
+	end
+end
+
+# sidebox of the html page (<nav class='properties filterable'>)
+class DocSidebox
+	var title: nullable String writable
+	var groups = new Array[DocSideboxGroup]
+
+	# return html sidebox
+	fun html: String do
+		var buffer = new Buffer
+		buffer.append("<nav class='properties filterable'>")
+		if title != null then buffer.append("<h3>{title}</h3>")
+		for group in groups do buffer.append(group.html)
+		buffer.append("</nav>")
+		return buffer.to_s
+	end
+end
+
+# sideboxgroup of the html page (<ul>)
+class DocSideboxGroup
+	var title: nullable String
+	var elements = new Array[DocListElement]
+
+	# return html sideboxgroup
+	fun html: String do
+		var buffer = new Buffer
+		if title != null then buffer.append("<h4>{title}</h4>")
+		buffer.append("<ul>")
+		for element in elements do buffer.append(element.html)
+		buffer.append("</ul>")
+		return buffer.to_s
+	end
+end
+
+# elements of the html page (<li>)
+class DocListElement
+	var css_classes = new Array[String]
+	var text: String
+
+	# return html element
+	fun html: String do
+		return "<li class='{css_classes.join(" ")}'>{text}</li>"
+	end
+end
