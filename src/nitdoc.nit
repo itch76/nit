@@ -353,10 +353,6 @@ class NitdocOverview
 	super NitdocPage
 	private var mbuilder: ModelBuilder
 	private var mmodules = new Array[MModule]
-	var sidebar = new DocSidebar
-	var sidebox = new DocSidebox("Modules")
-	var sideboxgroup = new DocSideboxGroup(null)
-
 
 	init(ctx: NitdocContext) do
 		super(ctx)
@@ -391,13 +387,21 @@ class NitdocOverview
 	end
 
 	private fun modules_column do
+		var sidebar = new DocSidebar
+		var sidebox = new DocSidebox("Modules")
 		sidebar.boxes.add(sidebox)
+		sidebox.set_css_class("properties filterable")
+		var sideboxgroup = new DocSideboxGroup(null)
 		sidebox.groups.add(sideboxgroup)
 		for sidemmodule in mmodules do
 			if mbuilder.mmodule2nmodule.has_key(sidemmodule) then
-				var element = new DocListElement("<a title='{mbuilder.mmodule2nmodule[sidemmodule].short_comment}' href='\#{sidemmodule.anchor}'>{sidemmodule.full_name}</a>")
+				var element = new DocListElementFull(sidemmodule.full_name)
 				element.css_classes.add(sidemmodule.full_name)
 				sideboxgroup.elements.add(element)
+				var link = new DocListElementLink(sidemmodule.full_name)
+				element.links.add(link)
+				link.set_css_title(sidemmodule.html_short_comment(self))
+				link.set_css_href("\#{sidemmodule.anchor}")
 			end
 		end
 		append(sidebar.html)
@@ -575,10 +579,7 @@ class NitdocModule
 	end
 
 	redef fun content do
-		append("<div class='sidebar'>")
 		classes_column
-		importation_column
-		append("</div>")
 		append("<div class='content'>")
 		module_doc
 		append("</div>")
@@ -590,45 +591,70 @@ class NitdocModule
 		sorted.add_all(intro_mclasses)
 		sorted.add_all(redef_mclasses)
 		sorter.sort(sorted)
-		# Work in Progress
-		#var sidebar = new DocSidebar
-		#var sidebox = new DocSidebox("Classes")
-		#var sideboxgroup = new DocSideboxGroup("Classes")
-		#sidebar.boxes.add(sidebox)
-		#sidebox.groups.add(sideboxgroup)
+		# sidebar classes
+		var sidebar = new DocSidebar
+		var sidebox = new DocSidebox("Classes")
+		sidebox.set_css_class("properties filterable")
+		var sideboxgroup = new DocSideboxGroup("Classes")
+		sidebar.boxes.add(sidebox)
+		sidebox.groups.add(sideboxgroup)
 		if not sorted.is_empty then
-			append("<nav class='properties filterable'>")
-			append("<h3>Classes</h3>")
-			append("<h4>Classes</h4>")
-			append("<ul>")
 			for mclass in sorted do
-					#var element = new DocListElement(mclass.html_sidebar_item(self))
-					#element.css_classes.add(mclass.html_full_desc)
-					#sideboxgroup.elements.add(element)
-					mclass.html_sidebar_item(self)
+				var li = new DocListElementFull(mclass.to_s)
+				sideboxgroup.elements.add(li)
+				# introduced classes
+				if intro_mclasses.has(mclass) then
+					var span = new DocListElementSpan("I")
+					li.css_classes.add("intro")
+					span.set_css_title("Introduced")
+					li.spans.add(span)
+				# redefined classes
+				else if redef_mclasses.has(mclass) then
+					var span = new DocListElementSpan("R")
+					li.css_classes.add("redef")
+					span.set_css_title("Redefined")
+					li.spans.add(span)
+				# inherited classes
+				else
+					var span = new DocListElementSpan("H")
+					li.css_classes.add("inherit")
+					span.set_css_title("Inherited")
+					li.spans.add(span)
+				end
+				var link = new DocListElementLink("{mclass.html_name}{mclass.html_short_signature}")
+				link.set_css_title(mclass.html_short_comment(self))
+				link.set_css_href("\#{mclass.anchor}")
+				li.links.add(link)
 			end
-			append("</ul>")
-			append("</nav>")
-			#append(sidebar.html)
 		end
-	end
 
-	private fun importation_column do
-		append("<nav>")
-		append("<h3>Module Hierarchy</h3>")
+		# sidebar module Hierarchy
 		var dependencies = new Array[MModule]
+		var sidebox_modules = new DocSidebox("Module Heriarchy")
+		sidebar.boxes.add(sidebox_modules)
 		for dep in mmodule.in_importation.greaters do
 			if dep == mmodule or dep.direct_owner == mmodule or dep.public_owner == mmodule then continue
 			dependencies.add(dep)
 		end
+		# nested modules
 		if mmodule.in_nesting.direct_greaters.length > 0 then
-			append("<h4>Nested Modules</h4>")
-			display_module_list(mmodule.in_nesting.direct_greaters.to_a)
+			var sideboxgroup_nested = new DocSideboxGroup("Nested Modules")
+			sidebox_modules.groups.add(sideboxgroup_nested)
+			var sorter_nested = new MModuleNameSorter
+			var sorted_nested = new Array[MModule]
+			sorted_nested = mmodule.in_nesting.direct_greaters.to_a
+			sorter_nested.sort(sorted_nested)
+			display_modules(sorted_nested, sideboxgroup_nested)
 		end
+		# all dependencies
 		if dependencies.length > 0 then
-			append("<h4>All dependencies</h4>")
-			display_module_list(dependencies)
+			var sideboxgroup_all = new DocSideboxGroup("All dependencies")
+			sidebox_modules.groups.add(sideboxgroup_all)
+			var sorter_all = new MModuleNameSorter
+			sorter_all.sort(dependencies)
+			display_modules(dependencies, sideboxgroup_all)
 		end
+		# clients modules
 		var clients = new Array[MModule]
 		for dep in mmodule.in_importation.smallers do
 			if dep.name == "<main>" then continue
@@ -636,22 +662,25 @@ class NitdocModule
 			clients.add(dep)
 		end
 		if clients.length > 0 then
-			append("<h4>All clients</h4>")
-			display_module_list(clients)
+			var sideboxgroup_client = new DocSideboxGroup("All clients")
+			sidebox_modules.groups.add(sideboxgroup_client)
+			var sorter_client = new MModuleNameSorter
+			sorter_client.sort(clients)
+			display_modules(clients, sideboxgroup_client)
 		end
-		append("</nav>")
+		# render
+		append(sidebar.html)
 	end
 
-	private fun display_module_list(list: Array[MModule]) do
-		append("<ul>")
-		var sorter = new MModuleNameSorter
-		sorter.sort(list)
-		for m in list do
-			append("<li>")
-			m.html_link(self)
-			append("</li>")
+	private fun display_modules (m: Array[MModule], sideboxgroup: DocSideboxGroup) do
+		for mmodule in m do
+			var element = new DocListElementFull(mmodule.html_name)
+			sideboxgroup.elements.add(element)
+			var link = new DocListElementLink(mmodule.html_name)
+			link.set_css_title(mmodule.html_short_comment(self))
+			link.set_css_href(mmodule.url)
+			element.links.add(link)
 		end
-		append("</ul>")
 	end
 
 	private fun module_doc do
@@ -1129,6 +1158,15 @@ redef class MModule
 	# Return the HTML escaped name of the module
 	private fun html_name: String do return name.html_escape
 
+	# return short comment for the module
+	private fun html_short_comment(page: NitdocPage): String do
+		var buffer = new Buffer
+		if page.ctx.mbuilder.mmodule2nmodule.has_key(self) then
+			buffer.append(page.ctx.mbuilder.mmodule2nmodule[self].short_comment)
+		end
+		return buffer.to_s
+	end
+
 	# URL to nitdoc page
 	#	module_owner_name.html
 	private fun url: String do
@@ -1274,6 +1312,18 @@ redef class MClass
 	# Return the HTML escaped name of the module
 	private fun html_name: String do return name.html_escape
 
+	#return short comment for the class
+	private fun html_short_comment(page: NitdocPage): String do
+		var buffer = new Buffer
+		if page.ctx.mbuilder.mclassdef2nclassdef.has_key(intro) then
+			var nclass = page.ctx.mbuilder.mclassdef2nclassdef[intro]
+			if nclass isa AStdClassdef then
+				buffer.append(nclass.short_comment)
+			end
+		end
+		return buffer.to_s
+	end
+
 	# URL to nitdoc page
 	#	class_owner_name.html
 	private fun url: String do
@@ -1378,25 +1428,6 @@ redef class MClass
 		page.append("::<span>")
 		html_short_link(page)
 		page.append("</span>")
-	end
-
-	# Return a list item for the mclass
-	#	<li>html_link</li>
-	private fun html_sidebar_item(page: NitdocModule) do
-		if page.mmodule.in_nesting.greaters.has(intro.mmodule) then
-			page.append("<li class='intro'>")
-			page.append("<span title='Introduced'>I</span>")
-			html_link_anchor(page)
-		else if page.mmodule.has_mclassdef_for(self) then
-			page.append("<li class='redef'>")
-			page.append("<span title='Redefined'>R</span>")
-			html_link_anchor(page)
-		else
-			page.append("<li class='inherit'>")
-			page.append("<span title='Inherited'>H</span>")
-			html_link(page)
-		end
-		page.append("</li>")
 	end
 
 	private fun html_full_desc(page: NitdocModule) do
