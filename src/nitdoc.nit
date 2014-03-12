@@ -390,18 +390,14 @@ class NitdocOverview
 		var sidebar = new DocSidebar
 		var sidebox = new DocSidebox("Modules")
 		sidebar.boxes.add(sidebox)
-		sidebox.set_css_class("properties filterable")
+		sidebox.css_classes.add("properties filterable")
 		var sideboxgroup = new DocSideboxGroup(null)
 		sidebox.groups.add(sideboxgroup)
 		for sidemmodule in mmodules do
 			if mbuilder.mmodule2nmodule.has_key(sidemmodule) then
-				var element = new DocListElementFull(sidemmodule.full_name)
-				element.css_classes.add(sidemmodule.full_name)
+				var element = new DocListElement("<a title='{sidemmodule.html_short_comment(self)}' href='\#{sidemmodule.anchor}'>{sidemmodule.full_name}</a>")
 				sideboxgroup.elements.add(element)
-				var link = new DocListElementLink(sidemmodule.full_name)
-				element.links.add(link)
-				link.set_css_title(sidemmodule.html_short_comment(self))
-				link.set_css_href("\#{sidemmodule.anchor}")
+				element.css_classes.add(sidemmodule.full_name)
 			end
 		end
 		append(sidebar.html)
@@ -579,59 +575,57 @@ class NitdocModule
 	end
 
 	redef fun content do
-		classes_column
+		# sidebar
+		var sidebar = new DocSidebar
+		var sidebox_classes = new DocSidebox("Classes")
+		sidebar.boxes.add(sidebox_classes)
+		classes_column (sidebox_classes)
+		var sidebox_modules = new DocSidebox("Module Heriarchy")
+		sidebar.boxes.add(sidebox_modules)
+		importation_column(sidebox_modules)
+		append(sidebar.html)
+		# content
 		append("<div class='content'>")
 		module_doc
 		append("</div>")
 	end
 
-	private fun classes_column do
+	private fun classes_column (sidebox: DocSidebox) do
 		var sorter = new MClassNameSorter
 		var sorted = new Array[MClass]
 		sorted.add_all(intro_mclasses)
 		sorted.add_all(redef_mclasses)
 		sorter.sort(sorted)
 		# sidebar classes
-		var sidebar = new DocSidebar
-		var sidebox = new DocSidebox("Classes")
-		sidebox.set_css_class("properties filterable")
+		sidebox.css_classes.add("properties filterable")
 		var sideboxgroup = new DocSideboxGroup("Classes")
-		sidebar.boxes.add(sidebox)
 		sidebox.groups.add(sideboxgroup)
 		if not sorted.is_empty then
 			for mclass in sorted do
-				var li = new DocListElementFull(mclass.to_s)
-				sideboxgroup.elements.add(li)
 				# introduced classes
 				if intro_mclasses.has(mclass) then
-					var span = new DocListElementSpan("I")
-					li.css_classes.add("intro")
-					span.set_css_title("Introduced")
-					li.spans.add(span)
+					var element = new DocListElement("<span title='Introduced'>I</span><a href='\#{mclass.anchor}' title='{mclass.html_short_comment(self)}'>{mclass.html_name}{mclass.html_short_signature}</a>")
+					sideboxgroup.elements.add(element)
+					element.css_classes.add("intro")
 				# redefined classes
 				else if redef_mclasses.has(mclass) then
-					var span = new DocListElementSpan("R")
-					li.css_classes.add("redef")
-					span.set_css_title("Redefined")
-					li.spans.add(span)
+					var element = new DocListElement("<span title='Redefined'>R</span><a href='\#{mclass.anchor}' title='{mclass.html_short_comment(self)}'>{mclass.html_name}{mclass.html_short_signature}</a>")
+					sideboxgroup.elements.add(element)
+					element.css_classes.add("redef")
 				# inherited classes
 				else
-					var span = new DocListElementSpan("H")
-					li.css_classes.add("inherit")
-					span.set_css_title("Inherited")
-					li.spans.add(span)
+					var element = new DocListElement("<span title='Inherited'>H</span><a href='\#{mclass.anchor}' title='{mclass.html_short_comment(self)}'>{mclass.html_name}{mclass.html_short_signature}</a>")
+					sideboxgroup.elements.add(element)
+					element.css_classes.add("inherit")
 				end
-				var link = new DocListElementLink("{mclass.html_name}{mclass.html_short_signature}")
-				link.set_css_title(mclass.html_short_comment(self))
-				link.set_css_href("\#{mclass.anchor}")
-				li.links.add(link)
 			end
 		end
+	end
 
+	private fun importation_column(sidebox: DocSidebox) do
 		# sidebar module Hierarchy
 		var dependencies = new Array[MModule]
-		var sidebox_modules = new DocSidebox("Module Heriarchy")
-		sidebar.boxes.add(sidebox_modules)
+
 		for dep in mmodule.in_importation.greaters do
 			if dep == mmodule or dep.direct_owner == mmodule or dep.public_owner == mmodule then continue
 			dependencies.add(dep)
@@ -639,20 +633,20 @@ class NitdocModule
 		# nested modules
 		if mmodule.in_nesting.direct_greaters.length > 0 then
 			var sideboxgroup_nested = new DocSideboxGroup("Nested Modules")
-			sidebox_modules.groups.add(sideboxgroup_nested)
+			sidebox.groups.add(sideboxgroup_nested)
 			var sorter_nested = new MModuleNameSorter
 			var sorted_nested = new Array[MModule]
 			sorted_nested = mmodule.in_nesting.direct_greaters.to_a
 			sorter_nested.sort(sorted_nested)
-			display_modules(sorted_nested, sideboxgroup_nested)
+			add_modules(sorted_nested, sideboxgroup_nested)
 		end
 		# all dependencies
 		if dependencies.length > 0 then
 			var sideboxgroup_all = new DocSideboxGroup("All dependencies")
-			sidebox_modules.groups.add(sideboxgroup_all)
+			sidebox.groups.add(sideboxgroup_all)
 			var sorter_all = new MModuleNameSorter
 			sorter_all.sort(dependencies)
-			display_modules(dependencies, sideboxgroup_all)
+			add_modules(dependencies, sideboxgroup_all)
 		end
 		# clients modules
 		var clients = new Array[MModule]
@@ -663,23 +657,17 @@ class NitdocModule
 		end
 		if clients.length > 0 then
 			var sideboxgroup_client = new DocSideboxGroup("All clients")
-			sidebox_modules.groups.add(sideboxgroup_client)
+			sidebox.groups.add(sideboxgroup_client)
 			var sorter_client = new MModuleNameSorter
 			sorter_client.sort(clients)
-			display_modules(clients, sideboxgroup_client)
+			add_modules(clients, sideboxgroup_client)
 		end
-		# render
-		append(sidebar.html)
 	end
 
-	private fun display_modules (m: Array[MModule], sideboxgroup: DocSideboxGroup) do
-		for mmodule in m do
-			var element = new DocListElementFull(mmodule.html_name)
+	private fun add_modules (list: Array[MModule], sideboxgroup: DocSideboxGroup) do
+		for mmodule in list do
+			var element = new DocListElement("<a href='{mmodule.url}' title='{mmodule.html_short_comment(self)}'>{mmodule.html_name}</a>")
 			sideboxgroup.elements.add(element)
-			var link = new DocListElementLink(mmodule.html_name)
-			link.set_css_title(mmodule.html_short_comment(self))
-			link.set_css_href(mmodule.url)
-			element.links.add(link)
 		end
 	end
 
