@@ -53,10 +53,6 @@ class DocFooter
 
 	init do end
 
-	init with_text(text: String) do
-		self.text = text
-	end
-
 	# return html footer
 	fun html: String do
 		var buffer = new Buffer
@@ -67,7 +63,7 @@ class DocFooter
 	end
 end
 
-# sidebar of the html page (<div class='sidebar')>)
+# sidebar of the html page
 class DocSidebar
 	var boxes = new Array[DocSidebox]
 
@@ -81,26 +77,20 @@ class DocSidebar
 	end
 end
 
-# sidebox of the html page (<nav class='something'><h3>foo</h3>)
+# sidebox of the html page
 class DocSidebox
 	var title: nullable String writable
 	var groups = new Array[DocSideboxGroup]
-	var css_class: nullable String
-
-	init(t: String) do
-		self.title = t
-	end
-
-	fun set_css_class(c: String) do
-		self.css_class = c
-	end
+	var css_classes = new Array[String]
 
 	# return html sidebox
 	fun html: String do
 		var buffer = new Buffer
-		buffer.append("<nav")
-		if css_class != null then buffer.append(" class='{css_class}'")
-		buffer.append(">")
+		if css_classes.is_empty then
+			buffer.append("<nav>")
+		else
+			buffer.append("<nav class='{css_classes.join(" ")}'>")
+		end
 		if title != null then buffer.append("<h3>{title}</h3>")
 		for group in groups do buffer.append(group.html)
 		buffer.append("</nav>")
@@ -108,7 +98,7 @@ class DocSidebox
 	end
 end
 
-# sideboxgroup of the html page (<ul>)
+# sideboxgroup of the html page
 class DocSideboxGroup
 	var title: nullable String
 	var elements = new Array[DocListElement]
@@ -124,78 +114,21 @@ class DocSideboxGroup
 	end
 end
 
-# elements of the html page (<li>)
+# elements of the html page
 class DocListElement
-	var css_classes = new Array[String]
 	var text: String
+	var css_classes = new Array[String]
 
 	# return html element
 	fun html: String do
-		return "<li class='{css_classes.join(" ")}'>{text}</li>"
-	end
-end
-
-# full element of the html page (<li><span><a>)
-class DocListElementFull super DocListElement
-	var spans = new Array[DocListElementSpan]
-	var links = new Array[DocListElementLink]
-
-	# return html full element
-	redef fun html: String do
 		var buffer = new Buffer
 		if css_classes.is_empty then
 			buffer.append("<li>")
 		else
 			buffer.append("<li class='{css_classes.join(" ")}'>")
 		end
-		if not spans.is_empty then
-			for span in spans do buffer.append(span.html)
-		end
-		if links.is_empty then
-				buffer.append(text)
-		else
-			for link in links do buffer.append(link.html)
-		end
+		buffer.append(text)
 		buffer.append("</li>")
-		return buffer.to_s
-	end
-
-end
-
-# span of the html page (<span>)
-class DocListElementSpan
-	var text: String
-	var css_title: nullable String
-
-	init (t: String) do self.text = t
-	# return html span
-
-	fun set_css_title (s: String) do self.css_title = s
-
-	fun html: String do
-		return "<span title='{css_title}'>{text}</span>"
-	end
-end
-
-# link of the html page (<a>)
-class DocListElementLink
-	var text: String
-	var css_title: nullable String
-	var css_href: nullable String
-
-	init(t: String) do self.text = t
-
-	fun set_css_title (s: String) do self.css_title = s
-
-	fun set_css_href (s: String) do self.css_href = s
-
-	# return the html link of an element
-	fun html: String do
-		var buffer = new Buffer
-		buffer.append("<a")
-		if css_title != null then buffer.append(" title='{css_title}'")
-		if css_href != null then buffer.append(" href='{css_href}'")
-		buffer.append(">{text}</a>")
 		return buffer.to_s
 	end
 end
