@@ -222,7 +222,6 @@ end
 
 # Nitdoc base page
 abstract class NitdocPage
-
 	var doc_header = new DocHeader
 	var doc_footer = new DocFooter
 	var ctx: NitdocContext
@@ -380,7 +379,9 @@ class NitdocOverview
 	redef fun title do return "Overview"
 
 	redef fun content do
+		# sidebar
 		modules_column
+		# main content
 		append("<div class='content'>")
 		modules_doc
 		append("</div>")
@@ -529,7 +530,6 @@ class NitdocSearch
 		append("</ul>")
 		append("</article>")
 	end
-
 end
 
 # A module page
@@ -580,11 +580,11 @@ class NitdocModule
 		var sidebox_classes = new DocSidebox("Classes")
 		sidebar.boxes.add(sidebox_classes)
 		classes_column (sidebox_classes)
-		var sidebox_modules = new DocSidebox("Module Heriarchy")
+		var sidebox_modules = new DocSidebox("Module Hierarchy")
 		sidebar.boxes.add(sidebox_modules)
 		importation_column(sidebox_modules)
 		append(sidebar.html)
-		# content
+		# main content
 		append("<div class='content'>")
 		module_doc
 		append("</div>")
@@ -596,31 +596,34 @@ class NitdocModule
 		sorted.add_all(intro_mclasses)
 		sorted.add_all(redef_mclasses)
 		sorter.sort(sorted)
-		# sidebar classes
 		sidebox.css_classes.add("properties filterable")
 		var sideboxgroup = new DocSideboxGroup("Classes")
 		sidebox.groups.add(sideboxgroup)
 		if not sorted.is_empty then
-			for mclass in sorted do
-				# introduced classes
-				if intro_mclasses.has(mclass) then
-					var element = new DocListElement("<span title='Introduced'>I</span><a href='\#{mclass.anchor}' title='{mclass.html_short_comment(self)}'>{mclass.html_name}{mclass.html_short_signature}</a>")
-					sideboxgroup.elements.add(element)
-					element.css_classes.add("intro")
-				# redefined classes
-				else if redef_mclasses.has(mclass) then
-					var element = new DocListElement("<span title='Redefined'>R</span><a href='\#{mclass.anchor}' title='{mclass.html_short_comment(self)}'>{mclass.html_name}{mclass.html_short_signature}</a>")
-					sideboxgroup.elements.add(element)
-					element.css_classes.add("redef")
-				# inherited classes
-				else
-					var element = new DocListElement("<span title='Inherited'>H</span><a href='\#{mclass.anchor}' title='{mclass.html_short_comment(self)}'>{mclass.html_name}{mclass.html_short_signature}</a>")
-					sideboxgroup.elements.add(element)
-					element.css_classes.add("inherit")
-				end
-			end
+			for mclass in sorted do add_class(mclass, sideboxgroup)
 		end
 	end
+
+	# add a class DocListElement to a DocSideboxGroup
+	private fun add_class (mclass: MClass, sideboxgroup: DocSideboxGroup) do
+		# introduced classes
+		if intro_mclasses.has(mclass) then
+			var element = new DocListElement("<span title='Introduced'>I</span><a href='\#{mclass.anchor}' title='{mclass.html_short_comment(self)}'>{mclass.html_name}{mclass.html_short_signature}</a>")
+			sideboxgroup.elements.add(element)
+			element.css_classes.add("intro")
+		# redefined classes
+		else if redef_mclasses.has(mclass) then
+			var element = new DocListElement("<span title='Redefined'>R</span><a href='\#{mclass.anchor}' title='{mclass.html_short_comment(self)}'>{mclass.html_name}{mclass.html_short_signature}</a>")
+			sideboxgroup.elements.add(element)
+			element.css_classes.add("redef")
+		# inherited classes
+		else
+			var element = new DocListElement("<span title='Inherited'>H</span><a href='\#{mclass.anchor}' title='{mclass.html_short_comment(self)}'>{mclass.html_name}{mclass.html_short_signature}</a>")
+			sideboxgroup.elements.add(element)
+			element.css_classes.add("inherit")
+		end
+	end
+
 
 	private fun importation_column(sidebox: DocSidebox) do
 		# sidebar module Hierarchy
@@ -664,7 +667,7 @@ class NitdocModule
 		end
 	end
 
-	private fun add_modules (list: Array[MModule], sideboxgroup: DocSideboxGroup) do
+	private fun add_modules(list: Array[MModule], sideboxgroup: DocSideboxGroup) do
 		for mmodule in list do
 			var element = new DocListElement("<a href='{mmodule.url}' title='{mmodule.html_short_comment(self)}'>{mmodule.html_name}</a>")
 			sideboxgroup.elements.add(element)
@@ -822,107 +825,104 @@ class NitdocClass
 	end
 
 	redef fun content do
-		append("<div class='sidebar'>")
-		properties_column
-		inheritance_column
-		append("</div>")
+		# sidebar
+		var sidebar = new DocSidebar
+		var sidebox_properties = new DocSidebox("Properties")
+		sidebox_properties.css_classes.add("properties filterable")
+		sidebar.boxes.add(sidebox_properties)
+		properties_column(sidebox_properties)
+		var sidebox_inheritance = new DocSidebox("Inheritance")
+		sidebar.boxes.add(sidebox_inheritance)
+		inheritance_column(sidebox_inheritance)
+		append(sidebar.html)
+		# main content
 		append("<div class='content'>")
 		class_doc
 		append("</div>")
 	end
 
-	private fun properties_column do
+	private fun properties_column(sidebox: DocSidebox) do
 		var sorter = new MPropDefNameSorter
-		append("<nav class='properties filterable'>")
-		append("<h3>Properties</h3>")
 		# virtual types
 		if vtypes.length > 0 then
 			var vts = new Array[MVirtualTypeDef]
 			vts.add_all(vtypes)
 			sorter.sort(vts)
-			append("<h4>Virtual Types</h4>")
-			append("<ul>")
+			var sideboxgroup_virtual = new DocSideboxGroup("Virtual Types")
+			sidebox.groups.add(sideboxgroup_virtual)
 			for mprop in vts do
-				mprop.html_sidebar_item(self)
+				var element = new DocListElement(mprop.get_html_sidebar_item(self))
+				sideboxgroup_virtual.elements.add(element)
 			end
-			append("</ul>")
 		end
 		# constructors
 		if consts.length > 0 then
 			var cts = new Array[MMethodDef]
 			cts.add_all(consts)
 			sorter.sort(cts)
-			append("<h4>Constructors</h4>")
-			append("<ul>")
+			var sideboxgroup_init = new DocSideboxGroup("Constructors")
+			sidebox.groups.add(sideboxgroup_init)
 			for mprop in cts do
 				if mprop.mproperty.name == "init" and mprop.mclassdef.mclass != mclass then continue
-				mprop.html_sidebar_item(self)
+				var element = new DocListElement(mprop.get_html_sidebar_item(self))
+				sideboxgroup_init.elements.add(element)
 			end
-			append("</ul>")
 		end
 		# methods
 		if meths.length > 0 then
 			var mts = new Array[MMethodDef]
 			mts.add_all(meths)
 			sorter.sort(mts)
-			append("<h4>Methods</h4>")
-			append("<ul>")
+			var sideboxgroup_methods = new DocSideboxGroup("Methods")
+			sidebox.groups.add(sideboxgroup_methods)
 			for mprop in mts do
-				mprop.html_sidebar_item(self)
+				var element = new DocListElement(mprop.get_html_sidebar_item(self))
+				sideboxgroup_methods.elements.add(element)
 			end
-			append("</ul>")
 		end
-		append("</nav>")
 	end
 
-	private fun inheritance_column do
+	private fun inheritance_column(sidebox: DocSidebox) do
 		var sorted = new Array[MClass]
 		var sorterp = new MClassNameSorter
-		append("<nav>")
-		append("<h3>Inheritance</h3>")
 		var greaters = mclass.in_hierarchy(ctx.mainmodule).greaters.to_a
 		if greaters.length > 1 then
 			ctx.mainmodule.linearize_mclasses(greaters)
-			append("<h4>Superclasses</h4>")
-			append("<ul>")
+			var sideboxgroup_super = new DocSideboxGroup("Superclasses")
+			sidebox.groups.add(sideboxgroup_super)
 			for sup in greaters do
 				if sup == mclass then continue
-				append("<li>")
-				sup.html_link(self)
-				append("</li>")
+				var element = new DocListElement(sup.get_html_link(self))
+				sideboxgroup_super.elements.add(element)
 			end
-			append("</ul>")
 		end
 		var smallers = mclass.in_hierarchy(ctx.mainmodule).smallers.to_a
 		var direct_smallers = mclass.in_hierarchy(ctx.mainmodule).direct_smallers.to_a
 		if smallers.length <= 1 then
-			append("<h4>No Known Subclasses</h4>")
+			var sideboxgroup_no = new DocSideboxGroup("No Know Subclasses")
+			sidebox.groups.add(sideboxgroup_no)
 		else if smallers.length <= 100 then
 			ctx.mainmodule.linearize_mclasses(smallers)
-			append("<h4>Subclasses</h4>")
-			append("<ul>")
+			var sideboxgroup_sub = new DocSideboxGroup("Subclasses")
+			sidebox.groups.add(sideboxgroup_sub)
 			for sub in smallers do
 				if sub == mclass then continue
-				append("<li>")
-				sub.html_link(self)
-				append("</li>")
+				var element = new DocListElement(sub.get_html_link(self))
+				sideboxgroup_sub.elements.add(element)
 			end
-			append("</ul>")
 		else if direct_smallers.length <= 100 then
 			ctx.mainmodule.linearize_mclasses(direct_smallers)
-			append("<h4>Direct Subclasses Only</h4>")
-			append("<ul>")
+			var sideboxgroup_direct_sub = new DocSideboxGroup("Direct Subclasses Only")
+			sidebox.groups.add(sideboxgroup_direct_sub)
 			for sub in direct_smallers do
 				if sub == mclass then continue
-				append("<li>")
-				sub.html_link(self)
-				append("</li>")
+				var element = new DocListElement(sub.get_html_link(self))
+				sideboxgroup_direct_sub.elements.add(element)
 			end
-			append("</ul>")
 		else
-			append("<h4>Too much Subclasses to list</h4>")
+			var sideboxgroup_too_much = new DocSideboxGroup("Too moch Subclasses to list")
+			sidebox.groups.add(sideboxgroup_too_much)
 		end
-		append("</nav>")
 	end
 
 	private fun class_doc do
@@ -1347,6 +1347,25 @@ redef class MClass
 	end
 	private var html_link_cache: nullable String
 
+	# return a link (with signature) to the nitdoc class page
+	#	<a href="url" title="short_comment">html_name(signature)</a>
+	private fun get_html_link(page: NitdocPage): String do
+		if get_html_link_cache == null then
+			var buffer = new Buffer
+			buffer.append("<a href='{url}'")
+			if page.ctx.mbuilder.mclassdef2nclassdef.has_key(intro) then
+				var nclass = page.ctx.mbuilder.mclassdef2nclassdef[intro]
+				if nclass isa AStdClassdef then
+					buffer.append(" title=\"{nclass.short_comment}\"")
+				end
+			end
+			buffer.append(">{html_name}{html_short_signature}</a>")
+			get_html_link_cache = buffer.to_s
+		end
+		return get_html_link_cache.as(not null)
+	end
+	private var get_html_link_cache: nullable String
+
 	# Return a short link (without signature) to the nitdoc class page
 	#	<a href="url" title="short_comment">html_name</a>
 	private fun html_short_link(page: NitdocPage) do
@@ -1626,22 +1645,41 @@ redef class MPropDef
 	end
 	private var html_link_cache: nullable String
 
-	# Return a list item for the mpropdef
-	#	<li>html_link</li>
-	private fun html_sidebar_item(page: NitdocClass) do
+	# return an element a list item for the mpropdef
+	#	<li>get_html_link</li>
+	private fun get_html_sidebar_item(page: NitdocClass): String do
+		var buffer = new Buffer
 		if is_intro and mclassdef.mclass == page.mclass then
-			page.append("<li class='intro'>")
-			page.append("<span title='Introduced'>I</span>")
+			buffer.append("<li class='intro'>")
+			buffer.append("<span title='Introduced'>I</span>")
 		else if is_intro and mclassdef.mclass != page.mclass then
-			page.append("<li class='inherit'>")
-			page.append("<span title='Inherited'>H</span>")
+			buffer.append("<li class='inherit'>")
+			buffer.append("<span title='Inherited'>H</span>")
 		else
-			page.append("<li class='redef'>")
-			page.append("<span title='Redefined'>R</span>")
+			buffer.append("<li class='redef'>")
+			buffer.append("<span title='Redefined'>R</span>")
 		end
-		html_link(page)
-		page.append("</li>")
+		buffer.append(get_html_link(page))
+		buffer.append("</li>")
+		return buffer.to_s
 	end
+
+	# Return a link to property into the nitdoc class page
+	#	<a href="url" title="short_comment">html_name</a>
+	private fun get_html_link(page: NitdocClass): String do
+		if get_html_link_cache == null then
+			var buffer = new Buffer
+			if page.ctx.mbuilder.mpropdef2npropdef.has_key(self) then
+				var nprop = page.ctx.mbuilder.mpropdef2npropdef[self]
+				buffer.append("<a href=\"{url}\" title=\"{nprop.short_comment}\">{mproperty.html_name}</a>")
+			else
+				buffer.append("<a href=\"{url}\">{mproperty.html_name}</a>")
+			end
+			get_html_link_cache = buffer.to_s
+		end
+		return get_html_link_cache.as(not null)
+	end
+	private var get_html_link_cache: nullable String
 
 	private fun html_full_desc(page: NitdocPage, ctx: MClass) is abstract
 	private fun html_info(page: NitdocPage, ctx: MClass) is abstract
