@@ -132,3 +132,56 @@ class DocListElement
 		return buffer.to_s
 	end
 end
+
+# main content of the html page
+class DocContent
+	var title: nullable String
+	var graph: nullable String
+	var overviews = new Array[DocContentOverview]
+	var sections = new Array[DocContentSection]
+
+	# return html main content
+	fun html: String do
+		var buffer = new Buffer
+		buffer.append("<div class='content'>")
+		if title != null then buffer.append("<h1>{title}</h1>")
+		for overview in overviews do buffer.append(overview.html)
+		if graph != null then buffer.append(graph.as(not null))
+		for section in sections do buffer.append(section.html)
+		buffer.append("</div>")
+		return buffer.to_s
+	end
+end
+
+# overview of the main content html page
+class DocContentOverview
+	var text: String
+
+	# return html overview
+	fun html: String do
+		var buffer = new Buffer
+		buffer.append("<article class='overview'>{text}</article>")
+		return buffer.to_s
+	end
+end
+
+# main content section of the html page
+class DocContentSection
+	var title: nullable String
+	var css_classes = new Array[String]
+	var elements = new Array[String]
+
+	# return html Content Box
+	fun html: String do
+		var buffer = new Buffer
+		if title != null then buffer.append("<h2>{title}</h2>")
+		if css_classes.is_empty then
+			buffer.append("<section>")
+		else
+			buffer.append("<section class='{css_classes.join(" ")}'>")
+		end
+		for element in elements do buffer.append(element)
+		buffer.append("</section>")
+		return buffer.to_s
+	end
+end
