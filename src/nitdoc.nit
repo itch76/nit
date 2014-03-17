@@ -255,19 +255,21 @@ abstract class NitdocPage
 	protected fun content is abstract
 
 	# Generate a clickable graphviz image using a dot content
-	protected fun generate_dot(dot: String, name: String, alt: String) do
+	protected fun generate_dot(dot: String, name: String, alt: String): String do
+		var buffer = new Buffer
 		var output_dir = ctx.dot_dir
-		if output_dir == null then return
+		if output_dir == null then return ""
 		var file = new OFStream.open("{output_dir}/{name}.dot")
 		file.write(dot)
 		file.close
 		sys.system("\{ test -f {output_dir}/{name}.png && test -f {output_dir}/{name}.s.dot && diff {output_dir}/{name}.dot {output_dir}/{name}.s.dot >/dev/null 2>&1 ; \} || \{ cp {output_dir}/{name}.dot {output_dir}/{name}.s.dot && dot -Tpng -o{output_dir}/{name}.png -Tcmapx -o{output_dir}/{name}.map {output_dir}/{name}.s.dot ; \}")
-		append("<article class='graph'>")
-		append("<img src='{name}.png' usemap='#{name}' style='margin:auto' alt='{alt}'/>")
-		append("</article>")
+		buffer.append("<article class='graph'>")
+		buffer.append("<img src='{name}.png' usemap='#{name}' style='margin:auto' alt='{alt}'/>")
+		buffer.append("</article>")
 		var fmap = new IFStream.open("{output_dir}/{name}.map")
-		append(fmap.read_all)
+		buffer.append(fmap.read_all)
 		fmap.close
+		return buffer.to_s
 	end
 
 	# Add a (source) link for a given location
@@ -383,9 +385,7 @@ class NitdocOverview
 		# sidebar
 		modules_column
 		# main content
-		append("<div class='content'>")
 		modules_doc
-		append("</div>")
 	end
 
 	private fun modules_column do
@@ -410,23 +410,23 @@ class NitdocOverview
 		if ctx.opt_custom_title.value != null then
 			title = ctx.opt_custom_title.value.to_s
 		end
-		append("<h1>{title}</h1>")
+		var content = new DocContent(title, process_generate_dot)
 		var text = ""
 		if ctx.opt_custom_overview_text.value != null then
 			text = ctx.opt_custom_overview_text.value.to_s
 		end
-		append("<article class='overview'>{text}</article>")
-		process_generate_dot
+		var content_overview = new DocContentOverview(text)
+		content.overviews.add(content_overview)
 		# modules list
-		append("<h2>Modules</h2>")
-		append("<section class='modules'>")
+		var section = new DocContentSection("Modules")
+		content.sections.add(section)
 		for mmodule in mmodules do
-			if mbuilder.mmodule2nmodule.has_key(mmodule) then append(mmodule.get_html_full_desc(self))
+			if mbuilder.mmodule2nmodule.has_key(mmodule) then section.elements.add(mmodule.get_html_full_desc(self))
 		end
-		append("</section>")
+		append(content.html)
 	end
 
-	private fun process_generate_dot do
+	private fun process_generate_dot: String do
 		# build poset with public owners
 		var poset = new POSet[MModule]
 		for mmodule in mmodules do
@@ -449,7 +449,7 @@ class NitdocOverview
 			end
 		end
 		op.append("\}\n")
-		generate_dot(op.to_s, "dep", "Modules hierarchy")
+		return generate_dot(op.to_s, "dep", "Modules hierarchy")
 	end
 end
 
