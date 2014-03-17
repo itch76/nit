@@ -683,7 +683,7 @@ class NitdocModule
 		append("</div>")
 		# comment
 		append(mmodule.get_html_comment(self))
-		process_generate_dot
+		append(process_generate_dot)
 		# classes
 		var class_sorter = new MClassNameSorter
 		# intro
@@ -708,7 +708,7 @@ class NitdocModule
 		end
 	end
 
-	private fun process_generate_dot do
+	private fun process_generate_dot: String do
 		# build poset with public owners
 		var poset = new POSet[MModule]
 		for mmodule in self.mmodule.in_importation.poset do
@@ -750,7 +750,7 @@ class NitdocModule
 			end
 		end
 		op.append("\}\n")
-		generate_dot(op.to_s, name, "Dependency graph for module {mmodule.name}")
+		return generate_dot(op.to_s, name, "Dependency graph for module {mmodule.name}")
 	end
 end
 
@@ -936,7 +936,7 @@ class NitdocClass
 		append("{mclass.html_short_signature}</div>")
 		# comment
 		mclass.html_comment(self)
-		process_generate_dot
+		append(process_generate_dot)
 		# concerns
 		var concern2meths = new ArrayMap[MModule, Array[MMethodDef]]
 		var sorted_meths = new Array[MMethodDef]
@@ -1092,7 +1092,7 @@ class NitdocClass
 		end
 	end
 
-	private fun process_generate_dot do
+	private fun process_generate_dot: String do
 		var pe = ctx.class_hierarchy[mclass]
 		var cla = new HashSet[MClass]
 		var sm = new HashSet[MClass]
@@ -1135,7 +1135,7 @@ class NitdocClass
 			end
 		end
 		op.append("\}\n")
-		generate_dot(op.to_s, name, "Dependency graph for class {mclass.name}")
+		return generate_dot(op.to_s, name, "Dependency graph for class {mclass.name}")
 	end
 end
 
