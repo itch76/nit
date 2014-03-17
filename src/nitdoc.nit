@@ -174,7 +174,7 @@ class NitdocContext
 		for mmodule in model.mmodules do
 			if mmodule.name == "<main>" then continue
 			var modulepage = new NitdocModule(mmodule, self)
-			modulepage.save("{output_dir.to_s}/{mmodule.url}")
+			modulepage.save("{output_dir.to_s}/{mmodule.get_url}")
 		end
 	end
 
@@ -191,7 +191,7 @@ class NitdocContext
 		for mmodule in model.mmodules do
 			if mmodule.name == "<main>" then continue
 			file.write("\"{mmodule.name}\": [")
-			file.write("\{txt: \"{mmodule.full_name}\", url:\"{mmodule.url}\" \},")
+			file.write("\{txt: \"{mmodule.full_name}\", url:\"{mmodule.get_url}\" \},")
 			file.write("],")
 		end
 		for mclass in model.mclasses do
@@ -222,6 +222,7 @@ end
 
 # Nitdoc base page
 abstract class NitdocPage
+
 	var doc_header = new DocHeader
 	var doc_footer = new DocFooter
 	var ctx: NitdocContext
@@ -270,8 +271,7 @@ abstract class NitdocPage
 	end
 
 	# Add a (source) link for a given location
-	protected fun show_source(l: Location): String
-	do
+	protected fun show_source(l: Location): String do
 		var source = ctx.source
 		if source == null then
 			return "({l.file.filename.simplify_path})"
@@ -350,6 +350,7 @@ end
 # The overview page
 class NitdocOverview
 	super NitdocPage
+
 	private var mbuilder: ModelBuilder
 	private var mmodules = new Array[MModule]
 
@@ -396,7 +397,7 @@ class NitdocOverview
 		sidebox.groups.add(sideboxgroup)
 		for sidemmodule in mmodules do
 			if mbuilder.mmodule2nmodule.has_key(sidemmodule) then
-				var element = new DocListElement("<a title='{sidemmodule.html_short_comment(self)}' href='\#{sidemmodule.anchor}'>{sidemmodule.full_name}</a>")
+				var element = new DocListElement("<a title='{sidemmodule.get_html_short_comment(self)}' href='\#{sidemmodule.get_anchor}'>{sidemmodule.full_name}</a>")
 				sideboxgroup.elements.add(element)
 				element.css_classes.add(sidemmodule.full_name)
 			end
@@ -420,9 +421,9 @@ class NitdocOverview
 		append("<h2>Modules</h2>")
 		append("<section class='modules'>")
 		for mmodule in mmodules do
-			if mbuilder.mmodule2nmodule.has_key(mmodule) then mmodule.html_full_desc(self)
+			if mbuilder.mmodule2nmodule.has_key(mmodule) then append(mmodule.get_html_full_desc(self))
 		end
-		append ("</section>")
+		append("</section>")
 	end
 
 	private fun process_generate_dot do
@@ -442,7 +443,7 @@ class NitdocOverview
 		var op = new Buffer
 		op.append("digraph dep \{ rankdir=BT; node[shape=none,margin=0,width=0,height=0,fontsize=10]; edge[dir=none,color=gray]; ranksep=0.2; nodesep=0.1;\n")
 		for mmodule in poset do
-			op.append("\"{mmodule.name}\"[URL=\"{mmodule.url}\"];\n")
+			op.append("\"{mmodule.name}\"[URL=\"{mmodule.get_url}\"];\n")
 			for omodule in poset[mmodule].direct_greaters do
 				op.append("\"{mmodule.name}\"->\"{omodule.name}\";\n")
 			end
@@ -485,7 +486,7 @@ class NitdocSearch
 		for mmodule in sorted do
 			if mmodule.name == "<main>" then continue
 			append("<li>")
-			mmodule.html_link(self)
+			append(mmodule.get_html_link(self))
 			append("</li>")
 		end
 		append("</ul>")
@@ -503,7 +504,7 @@ class NitdocSearch
 		for mclass in sorted do
 			if mclass.visibility < ctx.min_visibility then continue
 			append("<li>")
-			mclass.html_link(self)
+			append(mclass.get_html_link(self))
 			append("</li>")
 		end
 		append("</ul>")
@@ -524,7 +525,7 @@ class NitdocSearch
 			append("<li>")
 			mproperty.intro.html_link(self)
 			append(" (")
-			mproperty.intro.mclassdef.mclass.html_link(self)
+			append(mproperty.intro.mclassdef.mclass.get_html_link(self))
 			append(")</li>")
 		end
 		append("</ul>")
@@ -548,7 +549,7 @@ class NitdocModule
 		self.mbuilder = ctx.mbuilder
 		# init menu
 		doc_header.menu.items.add("<li><a href='index.html'>Overview</a></li>")
-		doc_header.menu.items.add("<li class='current'>{mmodule.html_name}</li>")
+		doc_header.menu.items.add("<li class='current'>{mmodule.get_html_name}</li>")
 		doc_header.menu.items.add("<li><a href='search.html'>Search</a></li>")
 		# get local mclasses
 		for m in mmodule.in_nesting.greaters do
@@ -568,9 +569,9 @@ class NitdocModule
 	redef fun title do
 		if mbuilder.mmodule2nmodule.has_key(mmodule) and not mbuilder.mmodule2nmodule[mmodule].short_comment.is_empty then
 			var nmodule = mbuilder.mmodule2nmodule[mmodule]
-			return "{mmodule.html_name} module | {nmodule.short_comment}"
+			return "{mmodule.get_html_name} module | {nmodule.short_comment}"
 		else
-			return "{mmodule.html_name} module"
+			return "{mmodule.get_html_name} module"
 		end
 	end
 
@@ -669,19 +670,19 @@ class NitdocModule
 
 	private fun add_modules(list: Array[MModule], sideboxgroup: DocSideboxGroup) do
 		for mmodule in list do
-			var element = new DocListElement("<a href='{mmodule.url}' title='{mmodule.html_short_comment(self)}'>{mmodule.html_name}</a>")
+			var element = new DocListElement("<a href='{mmodule.get_url}' title='{mmodule.get_html_short_comment(self)}'>{mmodule.get_html_name}</a>")
 			sideboxgroup.elements.add(element)
 		end
 	end
 
 	private fun module_doc do
 		# title
-		append("<h1>{mmodule.html_name}</h1>")
+		append("<h1>{mmodule.get_html_name}</h1>")
 		append("<div class='subtitle info'>")
-		mmodule.html_signature(self)
+		append(mmodule.get_html_signature(self))
 		append("</div>")
 		# comment
-		mmodule.html_comment(self)
+		append(mmodule.get_html_comment(self))
 		process_generate_dot
 		# classes
 		var class_sorter = new MClassNameSorter
@@ -742,7 +743,7 @@ class NitdocModule
 			if mmodule == self.mmodule then
 				op.append("\"{mmodule.name}\"[shape=box,margin=0.03];\n")
 			else
-				op.append("\"{mmodule.name}\"[URL=\"{mmodule.url}\"];\n")
+				op.append("\"{mmodule.name}\"[URL=\"{mmodule.get_url}\"];\n")
 			end
 			for omodule in poset[mmodule].direct_greaters do
 				op.append("\"{mmodule.name}\"->\"{omodule.name}\";\n")
@@ -770,9 +771,9 @@ class NitdocClass
 		doc_header.menu.items.add("<li><a href='index.html'>Overview</a></li>")
 		var public_owner = mclass.public_owner
 		if public_owner == null then
-			doc_header.menu.items.add("<li>{mclass.intro_mmodule.html_link_str(self)}</li>")
+			doc_header.menu.items.add("<li>{mclass.intro_mmodule.get_html_link(self)}</li>")
 		else
-			doc_header.menu.items.add("<li>{public_owner.html_link_str(self)}</li>")
+			doc_header.menu.items.add("<li>{public_owner.get_html_link(self)}</li>")
 		end
 		doc_header.menu.items.add("<li class='current'>{mclass.html_name}</li>")
 		doc_header.menu.items.add("<li><a href='search.html'>Search</a></li>")
@@ -920,7 +921,7 @@ class NitdocClass
 				sideboxgroup_direct_sub.elements.add(element)
 			end
 		else
-			var sideboxgroup_too_much = new DocSideboxGroup("Too moch Subclasses to list")
+			var sideboxgroup_too_much = new DocSideboxGroup("Too much Subclasses to list")
 			sidebox.groups.add(sideboxgroup_too_much)
 		end
 	end
@@ -965,18 +966,18 @@ class NitdocClass
 			var nowner = ctx.mbuilder.mmodule2nmodule[owner]
 			append("<li>")
 			if nowner.short_comment.is_empty then
-				append("<a href=\"#{owner.anchor}\">{owner.html_name}</a>")
+				append("<a href=\"#{owner.get_anchor}\">{owner.get_html_name}</a>")
 			else
-				append("<a href=\"#{owner.anchor}\">{owner.html_name}</a>: {nowner.short_comment}")
+				append("<a href=\"#{owner.get_anchor}\">{owner.get_html_name}</a>: {nowner.short_comment}")
 			end
 			if not mmodules.is_empty then
 				append("<ul>")
 				for mmodule in mmodules do
 					var nmodule = ctx.mbuilder.mmodule2nmodule[mmodule]
 					if nmodule.short_comment.is_empty then
-						append("<li><a href=\"#{mmodule.anchor}\">{mmodule.html_name}</a></li>")
+						append("<li><a href=\"#{mmodule.get_anchor}\">{mmodule.get_html_name}</a></li>")
 					else
-						append("<li><a href=\"#{mmodule.anchor}\">{mmodule.html_name}</a>: {nmodule.short_comment}</li>")
+						append("<li><a href=\"#{mmodule.get_anchor}\">{mmodule.get_html_name}</a>: {nmodule.short_comment}</li>")
 					end
 				end
 				append("</ul>")
@@ -1026,14 +1027,14 @@ class NitdocClass
 			append("<section class='methods'>")
 			append("<h2 class='section-header'>Methods</h2>")
 			for owner, mmodules in sections do
-				append("<a id=\"{owner.anchor}\"></a>")
+				append("<a id=\"{owner.get_anchor}\"></a>")
 				if owner != mclass.intro_mmodule and owner != mclass.public_owner then
 					var nowner = ctx.mbuilder.mmodule2nmodule[owner]
 					append("<h3 class=\"concern-toplevel\">Methods refined in ")
-					owner.html_link(self)
+					append(owner.get_html_link(self))
 					append("</h3>")
 					append("<p class=\"concern-doc\">")
-					owner.html_link(self)
+					append(owner.get_html_link(self))
 					if not nowner.short_comment.is_empty then
 						append(": {nowner.short_comment}")
 					end
@@ -1045,11 +1046,11 @@ class NitdocClass
 					for prop in mmethods do prop.html_full_desc(self, self.mclass)
 				end
 				for mmodule in mmodules do
-					append("<a id=\"{mmodule.anchor}\"></a>")
+					append("<a id=\"{mmodule.get_anchor}\"></a>")
 					var nmodule = ctx.mbuilder.mmodule2nmodule[mmodule]
 					if mmodule != mclass.intro_mmodule and mmodule != mclass.public_owner then
 						append("<p class=\"concern-doc\">")
-						mmodule.html_link(self)
+						append(mmodule.get_html_link(self))
 						if not nmodule.short_comment.is_empty then
 							append(": {nmodule.short_comment}")
 						end
@@ -1078,7 +1079,7 @@ class NitdocClass
 			for c, mmethods in classes do
 				prop_sorter.sort(mmethods)
 				append("<p>Defined in ")
-				c.html_link(self)
+				append(c.get_html_link(self))
 				append(": ")
 				for i in [0..mmethods.length[ do
 					var mmethod = mmethods[i]
@@ -1144,10 +1145,10 @@ end
 
 redef class MModule
 	# Return the HTML escaped name of the module
-	private fun html_name: String do return name.html_escape
+	private fun get_html_name: String do return name.html_escape
 
 	# return short comment for the module
-	private fun html_short_comment(page: NitdocPage): String do
+	private fun get_html_short_comment(page: NitdocPage): String do
 		var buffer = new Buffer
 		if page.ctx.mbuilder.mmodule2nmodule.has_key(self) then
 			buffer.append(page.ctx.mbuilder.mmodule2nmodule[self].short_comment)
@@ -1157,7 +1158,7 @@ redef class MModule
 
 	# URL to nitdoc page
 	#	module_owner_name.html
-	private fun url: String do
+	private fun get_url: String do
 		if url_cache == null then
 			var res = new Buffer
 			res.append("module_")
@@ -1174,7 +1175,7 @@ redef class MModule
 
 	# html anchor id for the module in a nitdoc page
 	#	MOD_owner_name
-	private fun anchor: String do
+	private fun get_anchor: String do
 		if anchor_cache == null then
 			var res = new Buffer
 			res.append("MOD_")
@@ -1191,90 +1192,100 @@ redef class MModule
 
 	# Return a link (html a tag) to the nitdoc module page
 	#	<a href="url" title="short_comment">html_name</a>
-	private fun html_link_str(page: NitdocPage): String do
-		if html_link_cache == null then
+	private fun get_html_link_str(page: NitdocPage): String do
+		if get_html_link_cache == null then
 			var res = new Buffer
 			if page.ctx.mbuilder.mmodule2nmodule.has_key(self) then
-				res.append("<a href='{url}' title='{page.ctx.mbuilder.mmodule2nmodule[self].short_comment}'>{html_name}</a>")
+				res.append("<a href='{get_url}' title='{page.ctx.mbuilder.mmodule2nmodule[self].short_comment}'>{get_html_name}</a>")
 			else
-				res.append("<a href='{url}'>{html_name}</a>")
+				res.append("<a href='{get_url}'>{get_html_name}</a>")
 			end
-			html_link_cache = res.to_s
+			get_html_link_cache = res.to_s
 		end
-		return html_link_cache.as(not null)
+		return get_html_link_cache.as(not null)
 	end
 
-	private fun html_link(page: NitdocPage) do
-		page.append(html_link_str(page))
+	private fun get_html_link(page: NitdocPage): String do
+		return get_html_link_str(page)
 	end
-	private var html_link_cache: nullable String
+	private var get_html_link_cache: nullable String
 
 	# Return the module signature decorated with html
 	#	<span>module html_full_namespace</span>
-	private fun html_signature(page: NitdocPage) do
-		page.append("<span>module ")
-		html_full_namespace(page)
-		page.append("</span>")
+	private fun get_html_signature(page: NitdocPage): String do
+		var buffer = new Buffer
+		buffer.append("<span>module ")
+		buffer.append(get_html_full_namespace(page))
+		buffer.append("</span>")
+		return buffer.to_s
 	end
 
 	# Return the module full namespace decorated with html
 	#	<span>public_owner.html_namespace::html_link</span>
-	private fun html_full_namespace(page: NitdocPage) do
-		page.append("<span>")
+	private fun get_html_full_namespace(page: NitdocPage): String do
+		var buffer = new Buffer
+		buffer.append("<span>")
 		var mowner = public_owner
 		if mowner != null then
-			public_owner.html_namespace(page)
-			page.append("::")
+			buffer.append(public_owner.get_html_namespace(page))
+			buffer.append("::")
 		end
-		html_link(page)
-		page.append("</span>")
+		buffer.append(get_html_link(page))
+		buffer.append("</span>")
+		return buffer.to_s
 	end
 
 	# Return the module full namespace decorated with html
 	#	<span>public_owner.html_namespace</span>
-	private fun html_namespace(page: NitdocPage) do
-		page.append("<span>")
+	private fun get_html_namespace(page: NitdocPage): String do
+		var buffer = new Buffer
+		buffer.append("<span>")
 		var mowner = public_owner
 		if mowner != null then
-			public_owner.html_namespace(page)
+			buffer.append(public_owner.get_html_namespace(page))
 		else
-			html_link(page)
+			buffer.append(get_html_link(page))
 		end
-		page.append("</span>")
+		buffer.append("</span>")
+		return buffer.to_s
 	end
 
 	#Return the full description of the module decorated with html
-	private fun html_full_desc(page: NitdocPage) do
-		page.append("<article class='{self}' id='{anchor}'>")
-		page.append("<h3 class='signature' data-untyped-signature='{html_name}'>")
-		page.append("<span>")
-		self.html_link(page)
-		page.append("</span></h3>")
-		self.html_comment(page)
-		page.append("</article>")
+	private fun get_html_full_desc(page: NitdocPage): String do
+		var buffer = new Buffer
+		buffer.append("<article class='{self}' id='{get_anchor}'>")
+		buffer.append("<h3 class='signature' data-untyped-signature='{get_html_name}'>")
+		buffer.append("<span>")
+		buffer.append(self.get_html_link(page))
+		buffer.append("</span></h3>")
+		buffer.append(self.get_html_comment(page))
+		buffer.append("</article>")
+		return buffer.to_s
 	end
 
 	# Return the full comment of the module decorated with html
-	private fun html_comment(page: NitdocPage) do
-		page.append("<div class='description'>")
+	private fun get_html_comment(page: NitdocPage): String do
+		var buffer = new Buffer
+		buffer.append("<div class='description'>")
 		if page.ctx.mbuilder.mmodule2nmodule.has_key(self) then
 			var nmodule = page.ctx.mbuilder.mmodule2nmodule[self]
 			if page.ctx.github_gitdir != null then
 				var loc = nmodule.doc_location.github(page.ctx.github_gitdir.as(not null))
-				page.append("<textarea class='baseComment' data-comment-namespace='{full_name}' data-comment-location='{loc}'>{nmodule.full_comment}</textarea>")
+				buffer.append("<textarea class='baseComment' data-comment-namespace='{full_name}' data-comment-location='{loc}'>{nmodule.full_comment}</textarea>")
 			end
 			if nmodule.full_comment == "" then
-				page.append("<p class='info inheritance'>")
-				page.append("<span class=\"noComment\">no comment for </span>")
+				buffer.append("<p class='info inheritance'>")
+				buffer.append("<span class=\"noComment\">no comment for </span>")
 			else
-				page.append("<div class='comment'>{nmodule.full_markdown}</div>")
-				page.append("<p class='info inheritance'>")
+				buffer.append("<div class='comment'>{nmodule.full_markdown}</div>")
+				buffer.append("<p class='info inheritance'>")
 			end
-			page.append("definition in ")
-			self.html_full_namespace(page)
-			page.append(" {page.show_source(nmodule.location)}</p>")
+			buffer.append("definition in ")
+			buffer.append(get_html_full_namespace(page))
+			buffer.append(" {page.show_source(nmodule.location)}</p>")
 		end
-		page.append("</div>")
+		buffer.append("</div>")
+		return buffer.to_s
 	end
 
 	private fun has_mclassdef_for(mclass: MClass): Bool do
@@ -1327,25 +1338,6 @@ redef class MClass
 		return anchor_cache.as(not null)
 	end
 	private var anchor_cache: nullable String
-
-	# Return a link (with signature) to the nitdoc class page
-	#	<a href="url" title="short_comment">html_name(signature)</a>
-	private fun html_link(page: NitdocPage) do
-		if html_link_cache == null then
-			var res = new Buffer
-			res.append("<a href='{url}'")
-			if page.ctx.mbuilder.mclassdef2nclassdef.has_key(intro) then
-				var nclass = page.ctx.mbuilder.mclassdef2nclassdef[intro]
-				if nclass isa AStdClassdef then
-					res.append(" title=\"{nclass.short_comment}\"")
-				end
-			end
-			res.append(">{html_name}{html_short_signature}</a>")
-			html_link_cache = res.to_s
-		end
-		page.append(html_link_cache.as(not null))
-	end
-	private var html_link_cache: nullable String
 
 	# return a link (with signature) to the nitdoc class page
 	#	<a href="url" title="short_comment">html_name(signature)</a>
@@ -1431,7 +1423,7 @@ redef class MClass
 	# Return the class namespace decorated with html
 	#	<span>intro_module::html_short_link</span>
 	private fun html_namespace(page: NitdocPage) do
-		intro_mmodule.html_namespace(page)
+		page.append(intro_mmodule.get_html_namespace(page))
 		page.append("::<span>")
 		html_short_link(page)
 		page.append("</span>")
@@ -1492,7 +1484,7 @@ redef class MClass
 						else
 							page.append("refinement in ")
 						end
-						mclassdef.mmodule.html_full_namespace(page)
+						page.append(mclassdef.mmodule.get_html_full_namespace(page))
 						page.append(" {page.show_source(nclass.location)}</p>")
 					end
 				end
@@ -1514,7 +1506,7 @@ redef class MClass
 						page.append("<p class='info inheritance'>")
 					end
 					page.append("introduction in ")
-					intro.mmodule.html_full_namespace(page)
+					page.append(intro.mmodule.get_html_full_namespace(page))
 					page.append(" {page.show_source(nclass.location)}</p>")
 				end
 			end
@@ -1559,7 +1551,7 @@ redef class MType
 end
 
 redef class MClassType
-	redef fun html_link(page) do mclass.html_link(page)
+	redef fun html_link(page) do page.append(mclass.get_html_link(page))
 end
 
 redef class MNullableType
@@ -1594,9 +1586,9 @@ end
 redef class MClassDef
 	# Return the classdef namespace decorated with html
 	private fun html_namespace(page: NitdocPage) do
-		mmodule.html_full_namespace(page)
+		page.append(mmodule.get_html_full_namespace(page))
 		page.append("::<span>")
-		mclass.html_link(page)
+		page.append(mclass.get_html_link(page))
 		page.append("</span>")
 	end
 end
