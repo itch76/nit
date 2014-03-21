@@ -133,19 +133,19 @@ class DocListElement
 	end
 end
 
-# main content of the html page
-class DocContent
+# main content of the Overview html page
+class DocContentOverview
 	var title: nullable String
 	var graph: nullable String
-	var overviews = new Array[DocContentOverview]
+	var previews = new Array[DocContentPreview]
 	var sections = new Array[DocContentSection]
 
-	# return html main content
+	# return html main content for an overview page
 	fun html: String do
 		var buffer = new Buffer
 		buffer.append("<div class='content'>")
 		if title != null then buffer.append("<h1>{title}</h1>")
-		for overview in overviews do buffer.append(overview.html)
+		for preview in previews do buffer.append(preview.html)
 		if graph != null then buffer.append(graph.as(not null))
 		for section in sections do buffer.append(section.html)
 		buffer.append("</div>")
@@ -153,11 +153,11 @@ class DocContent
 	end
 end
 
-# overview of the main content html page
-class DocContentOverview
+# preview of the main content html page
+class DocContentPreview
 	var text: String
 
-	# return html overview
+	# return html preview for an overview html page
 	fun html: String do
 		var buffer = new Buffer
 		buffer.append("<article class='overview'>{text}</article>")
@@ -165,11 +165,11 @@ class DocContentOverview
 	end
 end
 
-# main content section of the html page
+# main content sections of the overview html page
 class DocContentSection
 	var title: nullable String
 	var css_classes = new Array[String]
-	var elements = new Array[String]
+	var articles = new Array[String]
 
 	# return html Content Box
 	fun html: String do
@@ -180,7 +180,46 @@ class DocContentSection
 		else
 			buffer.append("<section class='{css_classes.join(" ")}'>")
 		end
-		for element in elements do buffer.append(element)
+		for article in articles do buffer.append(article)
+		buffer.append("</section>")
+		return buffer.to_s
+	end
+end
+
+# main content of the module html page
+class DocContentModule
+	var title: String
+	var subtitle: String
+	var description: String
+	var graph: String
+	var sections = new Array[DocContentModuleSection]
+
+	# return main content of a module html page
+	fun html:String do
+		var buffer = new Buffer
+		buffer.append("<div class='content'>")
+		buffer.append("<h1>{title}</h1>") 
+		buffer.append("<div class= 'subtitle info'>")
+		buffer.append(subtitle)
+		buffer.append("</div>")
+		buffer.append(description)
+		buffer.append(graph)
+		for section in sections do buffer.append(section.html)
+		return buffer.to_s
+	end
+end
+
+# Section of the main content of a module html page
+class DocContentModuleSection
+	var title: String
+	var articles = new Array[String]
+
+	# return a section for the main content of a module html page
+	fun html: String do
+		var buffer = new Buffer
+		buffer.append("<section class='classes'>")
+		buffer.append("<h2 class='section-header'>{title}</h2>")
+		for article in articles do buffer.append(article)
 		buffer.append("</section>")
 		return buffer.to_s
 	end
