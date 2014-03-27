@@ -523,7 +523,7 @@ class NitdocSearch
 			if mproperty.visibility < ctx.min_visibility then continue
 			if mproperty isa MAttribute then continue
 			append("<li>")
-			mproperty.intro.html_link(self)
+			append(mproperty.intro.gget_html_link(self))
 			append(" (")
 			append(mproperty.intro.mclassdef.mclass.get_html_link(self))
 			append(")</li>")
@@ -1632,7 +1632,8 @@ redef class MPropDef
 
 	# Return a link to property into the nitdoc class page
 	#	<a href="url" title="short_comment">html_name</a>
-	private fun html_link(page: NitdocPage) do
+	private fun gget_html_link(page: NitdocPage): String do
+		var buffer = new Buffer
 		if html_link_cache == null then
 			var res = new Buffer
 			if page.ctx.mbuilder.mpropdef2npropdef.has_key(self) then
@@ -1643,7 +1644,8 @@ redef class MPropDef
 			end
 			html_link_cache = res.to_s
 		end
-		page.append(html_link_cache.as(not null))
+		buffer.append(html_link_cache.as(not null))
+		return buffer.to_s
 	end
 	private var html_link_cache: nullable String
 
@@ -1652,17 +1654,26 @@ redef class MPropDef
 	private fun get_html_sidebar_item(page: NitdocClass): String do
 		var buffer = new Buffer
 		if is_intro and mclassdef.mclass == page.mclass then
-			buffer.append("<li class='intro'>")
 			buffer.append("<span title='Introduced'>I</span>")
 		else if is_intro and mclassdef.mclass != page.mclass then
-			buffer.append("<li class='inherit'>")
 			buffer.append("<span title='Inherited'>H</span>")
 		else
-			buffer.append("<li class='redef'>")
 			buffer.append("<span title='Redefined'>R</span>")
 		end
 		buffer.append(get_html_link(page))
-		buffer.append("</li>")
+		return buffer.to_s
+	end
+
+	# return "intro", "inherit" or "redef" depending of the property of the method in a class
+	private fun get_method_property(page: NitdocClass): String do
+		var buffer = new Buffer
+		if is_intro and mclassdef.mclass == page.mclass then
+			buffer.append("intro")
+		else if is_intro and mclassdef.mclass != page.mclass then
+			buffer.append("inherit")
+		else
+			buffer.append("redef")
+		end
 		return buffer.to_s
 	end
 
