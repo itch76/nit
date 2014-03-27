@@ -239,7 +239,7 @@ abstract class NitdocPage
 	protected fun head do
 		append("<meta charset='utf-8'/>")
 		append("<link rel='stylesheet' href='{shareurl}/css/main.css' type='text/css'/>")
-		append("<link rel='stylesheet' href='{shareurl}/css/Nitdoc.UI.css' type='text/css''/>")
+		append("<link rel='stylesheet' href='{shareurl}/css/Nitdoc.UI.css' type='text/css'/>")
 		append("<link rel='stylesheet' href='{shareurl}/css/Nitdoc.QuickSearch.css' type='text/css'/>")
 		append("<link rel='stylesheet' href='{shareurl}/css/Nitdoc.GitHub.css' type='text/css'/>")
 		append("<link rel='stylesheet' href='{shareurl}/css/Nitdoc.ModalBox.css' type='text/css'/>")
