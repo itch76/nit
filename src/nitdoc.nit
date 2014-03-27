@@ -818,20 +818,19 @@ class NitdocClass
 	end
 
 	redef fun content do
-		# sidebar
+		# sidebar (properties)
 		var sidebar = new DocSidebar
 		var sidebox_properties = new DocSidebox("Properties")
 		sidebox_properties.css_classes.add("properties filterable")
 		sidebar.boxes.add(sidebox_properties)
 		properties_column(sidebox_properties)
+		# sidebar (inheritance)
 		var sidebox_inheritance = new DocSidebox("Inheritance")
 		sidebar.boxes.add(sidebox_inheritance)
 		inheritance_column(sidebox_inheritance)
 		append(sidebar.html)
 		# main content
-		append("<div class='content'>")
 		class_doc
-		append("</div>")
 	end
 
 	private fun properties_column(sidebox: DocSidebox) do
@@ -922,16 +921,14 @@ class NitdocClass
 	end
 
 	private fun class_doc do
-		# title
-		append("<h1>{mclass.get_html_name}{mclass.get_html_short_signature}</h1>")
-		append("<div class='subtitle info'>")
-		if mclass.visibility < public_visibility then append("{mclass.visibility.to_s} ")
-		append("{mclass.kind.to_s} ")
-		append(mclass.get_html_namespace(self))
-		append("{mclass.get_html_short_signature}</div>")
-		# comment
-		append(mclass.get_html_comment(self))
-		append(process_generate_dot)
+		# title comment and graph
+		var subtitle: String
+		subtitle = ""
+		if mclass.visibility < public_visibility then
+			subtitle = "{mclass.visibility.to_s} "
+		end
+		subtitle += "{mclass.kind.to_s} {mclass.get_html_namespace(self)}{mclass.get_html_short_signature}"
+		var content = new DocContentClass("{mclass.get_html_name}{mclass.get_html_short_signature}", subtitle, mclass.get_html_comment(self), process_generate_dot)
 		# concerns
 		var concern2meths = new ArrayMap[MModule, Array[MMethodDef]]
 		var sorted_meths = new Array[MMethodDef]
@@ -954,109 +951,126 @@ class NitdocClass
 			if not sections.has_key(owner) then sections[owner] = new Array[MModule]
 			if owner != mmodule then sections[owner].add(mmodule)
 		end
-		append("<section class='concerns'>")
-		append("<h2 class='section-header'>Concerns</h2>")
-		append("<ul>")
+		var concern_tab = new ArrayMap[String, Array[String]]
+		var own: String
+		var mod: String
+		own = ""
+		mod = ""
 		for owner, mmodules in sections do
+			own = ""
 			var nowner = ctx.mbuilder.mmodule2nmodule[owner]
-			append("<li>")
 			if nowner.short_comment.is_empty then
-				append("<a href=\"#{owner.get_anchor}\">{owner.get_html_name}</a>")
+				own = "<a href=\"#{owner.get_anchor}\">{owner.get_html_name}</a>"
+				concern_tab[own] = new Array[String]
 			else
-				append("<a href=\"#{owner.get_anchor}\">{owner.get_html_name}</a>: {nowner.short_comment}")
+				own = "<a href=\"#{owner.get_anchor}\">{owner.get_html_name}</a>: {nowner.short_comment}"
+				concern_tab[own] = new Array[String]
 			end
 			if not mmodules.is_empty then
-				append("<ul>")
 				for mmodule in mmodules do
 					var nmodule = ctx.mbuilder.mmodule2nmodule[mmodule]
 					if nmodule.short_comment.is_empty then
-						append("<li><a href=\"#{mmodule.get_anchor}\">{mmodule.get_html_name}</a></li>")
+						mod = "<a href=\"#{mmodule.get_anchor}\">{mmodule.get_html_name}</a>"
+						concern_tab[own].add(mod)
 					else
-						append("<li><a href=\"#{mmodule.get_anchor}\">{mmodule.get_html_name}</a>: {nmodule.short_comment}</li>")
+						mod = "<a href=\"#{mmodule.get_anchor}\">{mmodule.get_html_name}</a>: {nmodule.short_comment}"
+						concern_tab[own].add(mod)
 					end
 				end
-				append("</ul>")
 			end
-			append("</li>")
+			mod = ""
 		end
-		append("</ul>")
-		append("</section>")
+		var concern = new DocContentClassConcern(concern_tab)
+		content.concerns.add(concern)
+
 		# properties
 		var prop_sorter = new MPropDefNameSorter
 		var lmmodule = new List[MModule]
 		var nclass = ctx.mbuilder.mclassdef2nclassdef[mclass.intro]
+
 		# virtual and formal types
 		var local_vtypes = new Array[MVirtualTypeDef]
 		for vt in vtypes do if not inherited.has(vt) then local_vtypes.add(vt)
 		if local_vtypes.length > 0 or mclass.arity > 0 then
-			append("<section class='types'>")
-			append("<h2>Formal and Virtual Types</h2>")
+			var section_virtual = new DocContentClassSection("Formal and Virtual Types")
+			content.sections.add(section_virtual)
+			section_virtual.section_css_classes.add("types")
 			# formal types
 			if mclass.arity > 0 and nclass isa AStdClassdef then
 				for ft, bound in mclass.parameter_types do
-					append("<article id='FT_{ft}'>")
-					append("<h3 class='signature' data-untyped-signature='{ft.to_s}'><span>{ft}: ")
-					bound.html_link(self)
-					append("</span></h3>")
-					append("<div class=\"info\">formal generic type</div>")
-					append("</article>")
+					var buf = new Buffer
+					bound.html_link(self, buf)
+					var article = new DocContentClassSectionFormal(ft, buf.to_s)
+					section_virtual.articles.add(article)
 				end
 			end
+
 			# virtual types
 			prop_sorter.sort(local_vtypes)
-			for prop in local_vtypes do prop.html_full_desc(self, self.mclass)
-			append("</section>")
+			for prop in local_vtypes do
+				section_virtual.texts.add(prop.get_html_full_desc(self, self.mclass))
+			end
 		end
 		# constructors
 		var local_consts = new Array[MMethodDef]
 		for const in consts do if not inherited.has(const) then local_consts.add(const)
 		prop_sorter.sort(local_consts)
 		if local_consts.length > 0 then
-			append("<section class='constructors'>")
-			append("<h2 class='section-header'>Constructors</h2>")
-			for prop in local_consts do prop.html_full_desc(self, self.mclass)
-			append("</section>")
+			var section_constr = new DocContentClassSection("Constructors")
+			section_constr.title_css_classes.add("section-header")
+			section_constr.section_css_classes.add("constructors")
+			content.sections.add(section_constr)
+			for prop in local_consts do
+				section_constr.texts.add(prop.get_html_full_desc(self, self.mclass))
+			end
 		end
 		# methods
 		if not concern2meths.is_empty then
-			append("<section class='methods'>")
-			append("<h2 class='section-header'>Methods</h2>")
+			var section_methods = new DocContentClassSection("Methods")
+			section_methods.section_css_classes.add("methods")
+			section_methods.title_css_classes.add("section-header")
+			content.sections.add(section_methods)
+			var buffer = new Buffer
 			for owner, mmodules in sections do
-				append("<a id=\"{owner.get_anchor}\"></a>")
+				buffer.append("<a id=\"{owner.get_anchor}\"></a>")
 				if owner != mclass.intro_mmodule and owner != mclass.public_owner then
 					var nowner = ctx.mbuilder.mmodule2nmodule[owner]
-					append("<h3 class=\"concern-toplevel\">Methods refined in ")
-					append(owner.get_html_link(self))
-					append("</h3>")
-					append("<p class=\"concern-doc\">")
-					append(owner.get_html_link(self))
+					buffer.append("<h3 class=\"concern-toplevel\">Methods refined in ")
+					buffer.append(owner.get_html_link(self))
+					buffer.append("</h3>")
+					buffer.append("<p class='concern-doc'>")
+					buffer.append(owner.get_html_link(self))
 					if not nowner.short_comment.is_empty then
-						append(": {nowner.short_comment}")
+						buffer.append(": {nowner.short_comment}")
 					end
-					append("</p>")
+					buffer.append("</p>")
 				end
 				if concern2meths.has_key(owner) then
 					var mmethods = concern2meths[owner]
 					prop_sorter.sort(mmethods)
-					for prop in mmethods do prop.html_full_desc(self, self.mclass)
+					for prop in mmethods do
+						buffer.append(prop.get_html_full_desc(self, self.mclass))
+					end
 				end
 				for mmodule in mmodules do
-					append("<a id=\"{mmodule.get_anchor}\"></a>")
+					buffer.append("<a id=\"{mmodule.get_anchor}\"></a>")
 					var nmodule = ctx.mbuilder.mmodule2nmodule[mmodule]
 					if mmodule != mclass.intro_mmodule and mmodule != mclass.public_owner then
-						append("<p class=\"concern-doc\">")
-						append(mmodule.get_html_link(self))
+						buffer.append("<p class='concern-doc'>")
+						buffer.append(mmodule.get_html_link(self))
 						if not nmodule.short_comment.is_empty then
-							append(": {nmodule.short_comment}")
+							buffer.append(": {nmodule.short_comment}")
 						end
-						append("</p>")
+						buffer.append("</p>")
 					end
 					var mmethods = concern2meths[mmodule]
 					prop_sorter.sort(mmethods)
-					for prop in mmethods do prop.html_full_desc(self, self.mclass)
+					for prop in mmethods do
+						buffer.append(prop.get_html_full_desc(self, self.mclass))
+					end
 				end
 			end
-			append("</section>")
+			section_methods.texts.add(buffer.to_s)
 		end
 		# inherited properties
 		if inherited.length > 0 then
@@ -1069,22 +1083,30 @@ class NitdocClass
 				if not classes.has_key(mclass) then classes[mclass] = new Array[MPropDef]
 				classes[mclass].add(mmethod)
 			end
-			append("<section class='inherited'>")
-			append("<h2 class='section-header'>Inherited Properties</h2>")
+			var section_inherited = new DocContentClassSection("Inherited Properties")
+			section_inherited.section_css_classes.add("inherited")
+			section_inherited.title_css_classes.add("section-header")
+			content.sections.add(section_inherited)
+			#append("<section class='inherited'>")
+			#append("<h2 class='section-header'>Inherited Properties</h2>")
+			var buffer_inherited = new Buffer
 			for c, mmethods in classes do
 				prop_sorter.sort(mmethods)
-				append("<p>Defined in ")
-				append(c.get_html_link(self))
-				append(": ")
+				buffer_inherited.append("<p>Defined in ")
+				buffer_inherited.append(c.get_html_link(self))
+				buffer_inherited.append(": ")
 				for i in [0..mmethods.length[ do
 					var mmethod = mmethods[i]
-					mmethod.html_link(self)
-					if i <= mmethods.length - 1 then append(", ")
+					buffer_inherited.append(mmethod.get_html_link(self))
+					if i <= mmethods.length - 1 then
+						buffer_inherited.append(", ")
+					end
 				end
-				append("</p>")
+				buffer_inherited.append("</p>")
 			end
-			append("</section>")
+			section_inherited.texts.add(buffer_inherited.to_s)
 		end
+		append(content.html)
 	end
 
 	private fun process_generate_dot: String do
