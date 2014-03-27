@@ -1396,7 +1396,9 @@ redef class MClass
 			buffer.append("[")
 			for i in [0..intro.parameter_names.length[ do
 				buffer.append("{intro.parameter_names[i]}: ")
-				intro.bound_mtype.arguments[i].html_link(page)
+				var buf = new Buffer
+				intro.bound_mtype.arguments[i].html_link(page, buf)
+				buffer.append(buf.to_s)
 				if i < intro.parameter_names.length - 1 then buffer.append(", ")
 			end
 			buffer.append("]")
@@ -1538,60 +1540,66 @@ redef class MProperty
 
 	# Return the property namespace decorated with html
 	#	<span>intro_module::intro_class::html_link</span>
-	private fun html_namespace(page: NitdocPage) do
-		page.append(intro_mclassdef.mclass.get_html_namespace(page))
-		page.append(intro_mclassdef.mclass.get_html_short_signature)
-		page.append("::<span>")
-		intro.html_link(page)
-		page.append("</span>")
+	private fun get_html_namespace(page: NitdocPage): String do
+		var buffer = new Buffer
+		buffer.append(intro_mclassdef.mclass.get_html_namespace(page))
+		buffer.append(intro_mclassdef.mclass.get_html_short_signature)
+		buffer.append("::<span>")
+		buffer.append(intro.gget_html_link(page))
+		buffer.append("</span>")
+		return buffer.to_s
 	end
 end
 
 redef class MType
 	# Link to the type definition in the nitdoc page
-	private fun html_link(page: NitdocPage) is abstract
+	private fun html_link(page: NitdocPage, buffer: Buffer) is abstract
 end
 
 redef class MClassType
-	redef fun html_link(page) do page.append(mclass.get_html_link(page))
+	redef fun html_link(page, buffer) do buffer.append(mclass.get_html_link(page))
 end
 
 redef class MNullableType
-	redef fun html_link(page) do
-		page.append("nullable ")
-		mtype.html_link(page)
+	redef fun html_link(page, buffer) do
+		buffer.append("nullable ")
+		mtype.html_link(page, buffer)
 	end
 end
 
 redef class MGenericType
-	redef fun html_link(page) do
-		page.append("<a href='{mclass.get_url}'>{mclass.get_html_name}</a>[")
+	redef fun html_link(page, buffer) do
+		buffer.append("<a href='{mclass.get_url}'>{mclass.get_html_name}</a>[")
 		for i in [0..arguments.length[ do
-			arguments[i].html_link(page)
-			if i < arguments.length - 1 then page.append(", ")
+			arguments[i].html_link(page, buffer)
+			if i < arguments.length - 1 then buffer.append(", ")
 		end
-		page.append("]")
+		buffer.append("]")
 	end
 end
 
 redef class MParameterType
-	redef fun html_link(page) do
+	redef fun html_link(page, buffer) do
 		var name = mclass.intro.parameter_names[rank]
-		page.append("<a href='{mclass.get_url}#FT_{name}' title='formal type'>{name}</a>")
+		buffer.append("<a href='{mclass.get_url}#FT_{name}' title='formal type'>{name}</a>")
 	end
 end
 
 redef class MVirtualType
-	redef fun html_link(page) do mproperty.intro.html_link(page)
+	redef fun html_link(page, buffer) do
+		buffer.append(mproperty.intro.gget_html_link(page))
+	end
 end
 
 redef class MClassDef
 	# Return the classdef namespace decorated with html
-	private fun html_namespace(page: NitdocPage) do
-		page.append(mmodule.get_html_full_namespace(page))
-		page.append("::<span>")
-		page.append(mclass.get_html_link(page))
-		page.append("</span>")
+	private fun get_html_namespace(page: NitdocPage): String do
+		var buffer = new Buffer
+		buffer.append(mmodule.get_html_full_namespace(page))
+		buffer.append("::<span>")
+		buffer.append(mclass.get_html_link(page))
+		buffer.append("</span>")
+		return buffer.to_s
 	end
 end
 
@@ -1675,57 +1683,60 @@ redef class MPropDef
 	end
 	private var get_html_link_cache: nullable String
 
-	private fun html_full_desc(page: NitdocPage, ctx: MClass) is abstract
-	private fun html_info(page: NitdocPage, ctx: MClass) is abstract
+	private fun get_html_full_desc(page: NitdocPage, ctx: MClass): String is abstract
+	private fun get_html_info(page: NitdocPage, ctx: MClass): String is abstract
 
-	private fun html_comment(page: NitdocPage) do
-		page.append("<div class='description'>")
+	private fun get_html_comment(page: NitdocPage): String do
+		var buffer = new Buffer
+		buffer.append("<div class='description'>")
 		if not is_intro then
 			if page.ctx.mbuilder.mpropdef2npropdef.has_key(mproperty.intro) then
 				var intro_nprop = page.ctx.mbuilder.mpropdef2npropdef[mproperty.intro]
 				if page.ctx.github_gitdir != null then
 					var loc = intro_nprop.doc_location.github(page.ctx.github_gitdir.as(not null))
-					page.append("<textarea class='baseComment' data-comment-namespace='{mproperty.intro.mclassdef.mmodule.full_name}::{mproperty.intro.mclassdef.mclass.name}::{mproperty.name}' data-comment-location='{loc}'>{intro_nprop.full_comment}</textarea>")
+					buffer.append("<textarea class='baseComment' data-comment-namespace='{mproperty.intro.mclassdef.mmodule.full_name}::{mproperty.intro.mclassdef.mclass.name}::{mproperty.name}' data-comment-location='{loc}'>{intro_nprop.full_comment}</textarea>")
 				end
 				if intro_nprop.full_comment.is_empty then
-					page.append("<p class='info inheritance'>")
-					page.append("<span class=\"noComment\">no comment for </span>")
+					buffer.append("<p class='info inheritance'>")
+					buffer.append("<span class=\"noComment\">no comment for </span>")
 				else
-					page.append("<div class='comment'>{intro_nprop.full_markdown}</div>")
-					page.append("<p class='info inheritance'>")
+					buffer.append("<div class='comment'>{intro_nprop.full_markdown}</div>")
+					buffer.append("<p class='info inheritance'>")
 				end
-				page.append("introduction in ")
-				mproperty.intro.mclassdef.html_namespace(page)
-				page.append(" {page.show_source(intro_nprop.location)}</p>")
+				buffer.append("introduction in ")
+				buffer.append(mproperty.intro.mclassdef.get_html_namespace(page))
+				buffer.append(" {page.show_source(intro_nprop.location)}</p>")
 			end
 		end
 		if page.ctx.mbuilder.mpropdef2npropdef.has_key(self) then
 			var nprop = page.ctx.mbuilder.mpropdef2npropdef[self]
 			if page.ctx.github_gitdir != null then
 				var loc = nprop.doc_location.github(page.ctx.github_gitdir.as(not null))
-				page.append("<textarea class='baseComment' data-comment-namespace='{mclassdef.mmodule.full_name}::{mclassdef.mclass.name}::{mproperty.name}' data-comment-location='{loc}'>{nprop.full_comment}</textarea>")
+				buffer.append("<textarea class='baseComment' data-comment-namespace='{mclassdef.mmodule.full_name}::{mclassdef.mclass.name}::{mproperty.name}' data-comment-location='{loc}'>{nprop.full_comment}</textarea>")
 			end
 			if nprop.full_comment == "" then
-				page.append("<p class='info inheritance'>")
-				page.append("<span class=\"noComment\">no comment for </span>")
+				buffer.append("<p class='info inheritance'>")
+				buffer.append("<span class=\"noComment\">no comment for </span>")
 			else
-				page.append("<div class='comment'>{nprop.full_markdown}</div>")
-				page.append("<p class='info inheritance'>")
+				buffer.append("<div class='comment'>{nprop.full_markdown}</div>")
+				buffer.append("<p class='info inheritance'>")
 			end
 			if is_intro then
-				page.append("introduction in ")
+				buffer.append("introduction in ")
 			else
-				page.append("redefinition in ")
+				buffer.append("redefinition in ")
 			end
-			mclassdef.html_namespace(page)
-			page.append(" {page.show_source(nprop.location)}</p>")
+			buffer.append(mclassdef.get_html_namespace(page))
+			buffer.append(" {page.show_source(nprop.location)}</p>")
 		end
-		page.append("</div>")
+		buffer.append("</div>")
+		return buffer.to_s
 	end
 end
 
 redef class MMethodDef
-	redef fun html_full_desc(page, ctx) do
+	redef fun get_html_full_desc(page, ctx): String do
+		var buffer = new Buffer
 		var classes = new Array[String]
 		var is_redef = mproperty.intro_mclassdef.mclass != ctx
 		if mproperty.is_init then
@@ -1735,76 +1746,89 @@ redef class MMethodDef
 		end
 		if is_redef then classes.add("redef")
 		classes.add(mproperty.visibility.to_s)
-		page.append("<article class='{classes.join(" ")}' id='{anchor}'>")
+		buffer.append("<article class='{classes.join(" ")}' id='{anchor}'>")
 		if page.ctx.mbuilder.mpropdef2npropdef.has_key(self) then
-			page.append("<h3 class='signature' data-untyped-signature='{mproperty.name}{msignature.untyped_signature(page)}'>")
-			page.append("<span>{mproperty.html_name}")
-			msignature.html_signature(page)
-			page.append("</span></h3>")
+			buffer.append("<h3 class='signature' data-untyped-signature='{mproperty.name}{msignature.untyped_signature(page)}'>")
+			buffer.append("<span>{mproperty.html_name}")
+			buffer.append(msignature.get_html_signature(page))
+			buffer.append("</span></h3>")
 		else
-			page.append("<h3 class='signature' data-untyped-signature='init{msignature.untyped_signature(page)}'>")
-			page.append("<span>init")
-			msignature.html_signature(page)
-			page.append("</span></h3>")
+			buffer.append("<h3 class='signature' data-untyped-signature='init{msignature.untyped_signature(page)}'>")
+			buffer.append("<span>init")
+			buffer.append(msignature.get_html_signature(page))
+			buffer.append("</span></h3>")
 		end
-		html_info(page, ctx)
-		html_comment(page)
-		page.append("</article>")
+		buffer.append(get_html_info(page, ctx))
+		buffer.append(get_html_comment(page))
+		buffer.append("</article>")
+		return buffer.to_s
 	end
 
-	redef fun html_info(page, ctx) do
-		page.append("<div class='info'>")
-		if mproperty.visibility < public_visibility then page.append("{mproperty.visibility.to_s} ")
-		if mproperty.intro_mclassdef.mclass != ctx then page.append("redef ")
+	redef fun get_html_info(page, ctx): String do
+		var buffer = new Buffer
+		buffer.append("<div class='info'>")
+		if mproperty.visibility < public_visibility then buffer.append("{mproperty.visibility.to_s} ")
+		if mproperty.intro_mclassdef.mclass != ctx then buffer.append("redef ")
 		if mproperty.is_init then
-			page.append("init ")
+			buffer.append("init ")
 		else
-			page.append("fun ")
+			buffer.append("fun ")
 		end
-		mproperty.html_namespace(page)
-		page.append("</div>")
+		buffer.append(mproperty.get_html_namespace(page))
+		buffer.append("</div>")
+		return buffer.to_s
 	end
 end
 
 redef class MVirtualTypeDef
-	redef fun html_full_desc(page, ctx) do
+	redef fun get_html_full_desc(page, ctx): String do
+		var buffer = new Buffer
 		var is_redef = mproperty.intro_mclassdef.mclass != ctx
 		var classes = new Array[String]
 		classes.add("type")
 		if is_redef then classes.add("redef")
 		classes.add(mproperty.visibility.to_s)
-		page.append("<article class='{classes.join(" ")}' id='{anchor}'>")
-		page.append("<h3 class='signature' data-untyped-signature='{mproperty.name}'><span>{mproperty.html_name}: ")
-		bound.html_link(page)
-		page.append("</span></h3>")
-		html_info(page, ctx)
-		html_comment(page)
-		page.append("</article>")
+		buffer.append("<article class='{classes.join(" ")}' id='{anchor}'>")
+		buffer.append("<h3 class='signature' data-untyped-signature='{mproperty.name}'><span>{mproperty.html_name}: ")
+		var buf = new Buffer
+		bound.html_link(page, buf)
+		buffer.append(buf.to_s)
+		buffer.append("</span></h3>")
+		buffer.append(get_html_info(page, ctx))
+		buffer.append(get_html_comment(page))
+		buffer.append("</article>")
+		return buffer.to_s
 	end
 
-	redef fun html_info(page, ctx) do
-		page.append("<div class='info'>")
-		if mproperty.intro_mclassdef.mclass != ctx then page.append("redef ")
-		page.append("type ")
-		mproperty.html_namespace(page)
-		page.append("</div>")
+	redef fun get_html_info(page, ctx): String do
+		var buffer = new Buffer
+		buffer.append("<div class='info'>")
+		if mproperty.intro_mclassdef.mclass != ctx then buffer.append("redef ")
+		buffer.append("type ")
+		buffer.append(mproperty.get_html_namespace(page))
+		buffer.append("</div>")
+		return buffer.to_s
 	end
 end
 
 redef class MSignature
-	private fun html_signature(page: NitdocPage) do
+	private fun get_html_signature(page: NitdocPage): String do
+		var buffer = new Buffer
 		if not mparameters.is_empty then
-			page.append("(")
+			buffer.append("(")
 			for i in [0..mparameters.length[ do
-				mparameters[i].html_link(page)
-				if i < mparameters.length - 1 then page.append(", ")
+				buffer.append(mparameters[i].get_html_link(page))
+				if i < mparameters.length - 1 then buffer.append(", ")
 			end
-			page.append(")")
+			buffer.append(")")
 		end
 		if return_mtype != null then
-			page.append(": ")
-			return_mtype.html_link(page)
+			buffer.append(": ")
+			var buf = new Buffer
+			return_mtype.html_link(page, buf)
+			buffer.append(buf.to_s)
 		end
+		return buffer.to_s
 	end
 
 	private fun untyped_signature(page: NitdocPage): String do
@@ -1822,10 +1846,14 @@ redef class MSignature
 end
 
 redef class MParameter
-	private fun html_link(page: NitdocPage) do
-		page.append("{name}: ")
-		mtype.html_link(page)
-		if is_vararg then page.append("...")
+	private fun get_html_link(page: NitdocPage): String do
+		var buffer = new Buffer
+		buffer.append("{name}: ")
+		var buf = new Buffer
+		mtype.html_link(page, buf)
+		buffer.append(buf.to_s)
+		if is_vararg then buffer.append("...")
+		return buffer.to_s
 	end
 end
 
