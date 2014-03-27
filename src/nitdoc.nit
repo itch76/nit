@@ -410,15 +410,13 @@ class NitdocOverview
 		if ctx.opt_custom_title.value != null then
 			title = ctx.opt_custom_title.value.to_s
 		end
-		var content = new DocContentOverview(title, process_generate_dot)
 		var text = ""
 		if ctx.opt_custom_overview_text.value != null then
 			text = ctx.opt_custom_overview_text.value.to_s
 		end
-		var content_overview = new DocContentPreview(text)
-		content.previews.add(content_overview)
+		var content = new DocContentOverview(title, process_generate_dot, text)
 		# modules list
-		var section = new DocContentSection("Modules")
+		var section = new DocContentOverviewSection("Modules")
 		content.sections.add(section)
 		for mmodule in mmodules do
 			if mbuilder.mmodule2nmodule.has_key(mmodule) then
