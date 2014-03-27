@@ -186,17 +186,14 @@ class DocContentModule
 	fun html:String do
 		var buffer = new Buffer
 		buffer.append("<div class='content'>")
-		buffer.append("<h1>{title}</h1>") 
-		buffer.append("<div class= 'subtitle info'>")
-		buffer.append(subtitle)
-		buffer.append("</div>")
+		buffer.append("<h1>{title}</h1>")
+		buffer.append("<div class= 'subtitle info'>{subtitle}</div>")
 		buffer.append(description)
 		buffer.append(graph)
 		for section in sections do buffer.append(section.html)
 		return buffer.to_s
 	end
 end
-
 # Section of the main content of a module html page
 class DocContentModuleSection
 	var title: String
