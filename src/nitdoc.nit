@@ -845,6 +845,7 @@ class NitdocClass
 			sidebox.groups.add(sideboxgroup_virtual)
 			for mprop in vts do
 				var element = new DocListElement(mprop.get_html_sidebar_item(self))
+				element.css_classes.add(mprop.get_method_property(self))
 				sideboxgroup_virtual.elements.add(element)
 			end
 		end
@@ -858,6 +859,7 @@ class NitdocClass
 			for mprop in cts do
 				if mprop.mproperty.name == "init" and mprop.mclassdef.mclass != mclass then continue
 				var element = new DocListElement(mprop.get_html_sidebar_item(self))
+				element.css_classes.add(mprop.get_method_property(self))
 				sideboxgroup_init.elements.add(element)
 			end
 		end
@@ -870,6 +872,7 @@ class NitdocClass
 			sidebox.groups.add(sideboxgroup_methods)
 			for mprop in mts do
 				var element = new DocListElement(mprop.get_html_sidebar_item(self))
+				element.css_classes.add(mprop.get_method_property(self))
 				sideboxgroup_methods.elements.add(element)
 			end
 		end
