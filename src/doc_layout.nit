@@ -135,38 +135,26 @@ end
 
 # main content of the Overview html page
 class DocContentOverview
-	var title: nullable String
-	var graph: nullable String
-	var previews = new Array[DocContentPreview]
-	var sections = new Array[DocContentSection]
+	var title: String
+	var graph: String
+	var description: String
+	var sections = new Array[DocContentOverviewSection]
 
 	# return html main content for an overview page
 	fun html: String do
 		var buffer = new Buffer
 		buffer.append("<div class='content'>")
-		if title != null then buffer.append("<h1>{title}</h1>")
-		for preview in previews do buffer.append(preview.html)
-		if graph != null then buffer.append(graph.as(not null))
+		buffer.append("<h1>{title}</h1>")
+		buffer.append("<article class='overview'>{description}</article>")
+		buffer.append(graph)
 		for section in sections do buffer.append(section.html)
 		buffer.append("</div>")
 		return buffer.to_s
 	end
 end
 
-# preview of the main content html page
-class DocContentPreview
-	var text: String
-
-	# return html preview for an overview html page
-	fun html: String do
-		var buffer = new Buffer
-		buffer.append("<article class='overview'>{text}</article>")
-		return buffer.to_s
-	end
-end
-
 # main content sections of the overview html page
-class DocContentSection
+class DocContentOverviewSection
 	var title: nullable String
 	var css_classes = new Array[String]
 	var articles = new Array[String]
