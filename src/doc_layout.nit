@@ -209,3 +209,106 @@ class DocContentModuleSection
 		return buffer.to_s
 	end
 end
+
+# main content of a class html page
+class DocContentClass
+	var title: String
+	var subtitle: String
+	var description: String
+	var graph: String
+	var concerns = new Array[DocContentClassConcern]
+	var sections = new Array[DocContentClassSection]
+
+	# return main content for a class html page
+	fun html: String do
+		var buffer = new Buffer
+		buffer.append("<div class='content'>")
+		buffer.append("<h1>{title}</h1>")
+		buffer.append("<div class='subtitle info'>{subtitle}</div>")
+		buffer.append(description)
+		buffer.append(graph)
+		for concern in concerns do buffer.append(concern.html)
+		for section in sections do buffer.append(section.html)
+		buffer.append("</div>")
+		return buffer.to_s
+	end
+end
+
+# section of class html page
+class DocContentClassSection
+	var title: String
+	var section_css_classes = new Array[String]
+	var title_css_classes = new Array[String]
+	var articles = new Array[DocContentClassSectionFormal]
+	var texts = new Array[String]
+
+	# return a section for a class html page
+	fun html: String do
+		var buffer = new Buffer
+		if section_css_classes.is_empty then
+			buffer.append("<section>")
+		else
+			buffer.append("<section class='{section_css_classes.join(" ")}'>")
+		end
+		if title_css_classes.is_empty then
+			buffer.append("<h2>{title}</h2>")
+		else
+			buffer.append("<h2 class='{title_css_classes.join(" ")}'>{title}</h2>")
+		end
+		if not articles.is_empty then
+			for article in articles do buffer.append(article.html)
+		end
+		if not texts.is_empty then
+			for text in texts do buffer.append(text)
+		end
+		buffer.append("</section>")
+		return buffer.to_s
+	end
+end
+
+
+class DocContentClassSectionFormal
+	var ft: String
+	var link : String
+
+	fun html: String do
+		var buffer = new Buffer
+		buffer.append("<article id='FT_{ft}'>")
+		buffer.append("<h3 class='signature' data-untyped-signature='{ft.to_s}'>")
+		buffer.append("<span>{ft}: {link}</span>")
+		buffer.append("</h3>")
+		buffer.append("<div class='info'>formal generic type</div>")
+		buffer.append("</article>")
+		return buffer.to_s
+	end
+end
+
+# concern of a class html page
+class DocContentClassConcern
+	var concerns = new ArrayMap[String, Array[String]]
+
+	init(concern: ArrayMap[String, Array[String]]) do
+		self.concerns = concern
+	end
+
+	# return the concern for a class html page
+	fun html: String do
+		var buffer = new Buffer
+		buffer.append("<section class='concerns'>")
+		buffer.append("<h2 class='section-header'>Concern</h2>")
+		buffer.append("<ul>")
+		for owner, mmodules in concerns do
+			buffer.append("<li>{owner}")
+			if not mmodules.is_empty then
+				buffer.append("<ul>")
+				for mmodule in mmodules do
+					buffer.append("<li>{mmodule}</li>")
+				end
+				buffer.append("</ul>")
+			end
+		end
+		buffer.append("</ul>")
+		buffer.append("</section>")
+		return buffer.to_s
+	end
+end
